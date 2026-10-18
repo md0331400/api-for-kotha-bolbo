@@ -25,30 +25,30 @@ body {
   textarea,
   select {
     color-scheme: light;
-    color: theme("colors.slate.900");
-    background-color: theme("colors.white");
-    caret-color: theme("colors.brand.600");
+    color: #0f172a;
+    background-color: #ffffff;
+    caret-color: #4f46e5;
   }
   input::placeholder,
   textarea::placeholder {
-    color: theme("colors.slate.400");
+    color: #9ca3af;
     opacity: 1;
   }
   input:disabled,
   textarea:disabled,
   select:disabled {
-    color: theme("colors.slate.500");
-    background-color: theme("colors.slate.100");
-    -webkit-text-fill-color: theme("colors.slate.500");
+    color: #64748b;
+    background-color: #f1f5f9;
+    -webkit-text-fill-color: #64748b;
   }
   select option,
   select optgroup {
-    color: theme("colors.slate.900");
-    background-color: theme("colors.white");
+    color: #0f172a;
+    background-color: #ffffff;
   }
   select option:checked {
-    color: theme("colors.brand.900");
-    background-color: theme("colors.brand.50");
+    color: #312e81;
+    background-color: #eef2ff;
   }
   /* Browser autofill paints its own background; keep text readable. */
   input:-webkit-autofill,
@@ -56,9 +56,9 @@ body {
   input:-webkit-autofill:focus,
   textarea:-webkit-autofill,
   select:-webkit-autofill {
-    -webkit-text-fill-color: theme("colors.slate.900");
-    caret-color: theme("colors.brand.600");
-    box-shadow: 0 0 0 1000px theme("colors.brand.50") inset;
+    -webkit-text-fill-color: #0f172a;
+    caret-color: #4f46e5;
+    box-shadow: 0 0 0 1000px #eef2ff inset;
     transition: background-color 9999s ease-out 0s;
   }
   input[type="search"]::-webkit-search-cancel-button {

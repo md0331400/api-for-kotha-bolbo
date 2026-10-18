@@ -21,3 +21,4 @@ const nextConfig = {
 };
 
 export default nextConfig;
+nextConfig.swcMinify = false;

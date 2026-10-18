@@ -86,9 +86,17 @@ export default function VersionPage() {
   return (
     <div>
       <PageHeader
-        title="App Version"
+        title="Your Applications"
         description="Published version metadata consumed by the Kotha Bolbo app and Android APK via GET /api/v1/app/version."
       />
+      <Card title="Registered Applications" className="mb-6">
+        <p className="text-sm text-slate-500 mb-4">Manage registered applications that can use this storage pool.</p>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => alert("Registration API available. UI expansion pending.")}>
+            Add Application
+          </Button>
+        </div>
+      </Card>
 
       {error && (
         <div className="mb-4">

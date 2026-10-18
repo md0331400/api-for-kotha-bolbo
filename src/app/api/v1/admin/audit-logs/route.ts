@@ -24,7 +24,7 @@ export const GET = apiRoute(
     return paginatedResponse(
       result.items.map((l) => ({
         id: l.id,
-        at: new Date(l.at).toISOString(),
+        at: new Date(l.at || Date.now()).toISOString(),
         actorUid: l.actorUid,
         actorEmail: l.actorEmail,
         action: l.action,

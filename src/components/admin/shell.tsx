@@ -26,7 +26,7 @@ const NAV = [
   { href: "/admin/drive", label: "Drive Accounts", icon: HardDrive },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/files", label: "Files", icon: FileStack },
-  { href: "/admin/version", label: "App Version", icon: Smartphone },
+  { href: "/admin/apps", label: "Your Applications", icon: Smartphone },
   { href: "/admin/api-keys", label: "API Keys", icon: KeyRound },
   { href: "/admin/logs", label: "Logs & Jobs", icon: History },
 ];

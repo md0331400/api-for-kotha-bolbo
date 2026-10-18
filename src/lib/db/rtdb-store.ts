@@ -104,7 +104,7 @@ export class RtdbStore implements Store {
       outcome.committed = true;
       final = next;
       return next;
-    });
+    }, undefined, false);
     return {
       committed: result.committed,
       value: (result.snapshot.val() ?? final ?? null) as T | null,

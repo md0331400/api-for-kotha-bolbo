@@ -24,8 +24,8 @@ function publicUser(u: {
     remainingBytes: Math.max(0, u.quotaBytes - u.usedBytes - u.reservedBytes),
     fileCount: u.fileCount,
     restricted: u.restricted,
-    createdAt: new Date(u.createdAt).toISOString(),
-    lastLoginAt: new Date(u.lastLoginAt).toISOString(),
+    createdAt: new Date(u.createdAt || Date.now()).toISOString(),
+    lastLoginAt: new Date(u.lastLoginAt || Date.now()).toISOString(),
   };
 }
 

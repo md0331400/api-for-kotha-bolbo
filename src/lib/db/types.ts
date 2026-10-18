@@ -247,8 +247,8 @@ export function toPublicFile(f: FileRecord, now = Date.now()): PublicFile {
     name: f.name,
     mimeType: f.mimeType,
     sizeBytes: f.sizeBytes,
-    createdAt: new Date(f.createdAt).toISOString(),
-    expiresAt: new Date(f.expiresAt).toISOString(),
+    createdAt: new Date(f.createdAt || Date.now()).toISOString(),
+    expiresAt: new Date(f.expiresAt || Date.now()).toISOString(),
     status: f.status,
     daysUntilExpiry: Math.ceil((f.expiresAt - now) / 86_400_000),
   };
