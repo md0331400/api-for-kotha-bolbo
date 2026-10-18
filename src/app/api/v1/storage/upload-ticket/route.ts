@@ -116,5 +116,5 @@ export const POST = apiRoute(
       reused: false,
     });
   },
-  { auth: "user", rateLimit: { limit: 30, windowSec: 60, bucket: "upload-ticket" } }
+  { auth: "user", scope: "storage:write", rateLimit: { limit: 30, windowSec: 60, bucket: "upload-ticket" } }
 );

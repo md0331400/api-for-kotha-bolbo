@@ -27,5 +27,5 @@ export const POST = apiRoute(
     });
     return dataResponse({ registered: true });
   },
-  { auth: "user", rateLimit: { limit: 30, windowSec: 60, bucket: "notif-token" } }
+  { auth: "user", scope: "notifications:write", rateLimit: { limit: 30, windowSec: 60, bucket: "notif-token" } }
 );

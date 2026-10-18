@@ -74,6 +74,11 @@ Create (or reuse) an OAuth client for **server-side web flows**:
    set), creates a `Kotha Bolbo Storage` folder in that account, and runs a real create+delete
    test. The account shows **verified** only after that test passes.
 4. Repeat for each pool account. Capacity is displayed only when Google reports it reliably.
+5. Connecting a Google account that is **already connected** does not create another pool record.
+   The dashboard shows *"This Google account is already connected…"*, the stored credentials are
+   refreshed, and a previously disconnected account is re-enabled. Identity is matched by Google's
+   stable account id (`sub`, requires the default `userinfo.email`/`userinfo.profile` scopes) and
+   by normalized e-mail.
 
 ### What the app will and will not do in a connected account
 

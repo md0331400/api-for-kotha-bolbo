@@ -31,6 +31,7 @@ export const GET = apiRoute(
         quotaInfo: a.quotaInfo,
         hasManagedFolder: Boolean(a.managedFolderId),
         hasStoredCredentials: Boolean(token),
+        hasGoogleAccountId: Boolean(a.googleAccountId),
         disabledReason: a.disabledReason,
       });
     }

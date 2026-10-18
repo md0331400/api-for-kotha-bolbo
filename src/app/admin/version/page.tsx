@@ -3,9 +3,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Send } from "lucide-react";
 import { useAuth } from "@/lib/admin/auth-context";
-import { api, ApiClientError } from "@/lib/admin/api-client";
+import { api, ApiClientError, describeError, type UiError } from "@/lib/admin/api-client";
 import { formatDate } from "@/lib/format";
-import { Badge, Button, Card, ConfirmDialog, ErrorBanner, InfoBanner, PageLoading, Toast } from "@/components/admin/ui";
+import { Badge, Button, Card, Checkbox, ConfirmDialog, ErrorBanner, Field, InfoBanner, Input, PageLoading, Textarea, Toast } from "@/components/admin/ui";
 import { PageHeader } from "@/components/admin/shell";
 
 type VersionConfig = {
@@ -24,7 +24,8 @@ const SEMVER = /^[0-9]+\.[0-9]+\.[0-9]+([+-][A-Za-z0-9.-]+)?$/;
 export default function VersionPage() {
   const { user } = useAuth();
   const [cfg, setCfg] = useState<VersionConfig | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UiError | null>(null);
+  const [loading, setLoading] = useState(false);
   const [currentVersion, setCurrentVersion] = useState("");
   const [minSupportedVersion, setMinSupportedVersion] = useState("");
   const [updateUrl, setUpdateUrl] = useState("");
@@ -37,6 +38,7 @@ export default function VersionPage() {
   const load = useCallback(async () => {
     if (!user) return;
     setError(null);
+    setLoading(true);
     try {
       const c = await api.get<VersionConfig>(user, "/api/v1/admin/app-version");
       setCfg(c);
@@ -46,7 +48,9 @@ export default function VersionPage() {
       setForceUpdate(Boolean(c.forceUpdate));
       setReleaseNotes(c.releaseNotes ?? "");
     } catch (e) {
-      setError(e instanceof ApiClientError ? e.message : "Failed to load version config.");
+      setError(describeError(e, "Failed to load version config."));
+    } finally {
+      setLoading(false);
     }
   }, [user]);
 
@@ -86,7 +90,11 @@ export default function VersionPage() {
         description="Published version metadata consumed by the Kotha Bolbo app and Android APK via GET /api/v1/app/version."
       />
 
-      {error && <div className="mb-4"><ErrorBanner message={error} /></div>}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error.message} code={error.code} requestId={error.requestId} onRetry={load} retrying={loading} />
+        </div>
+      )}
 
       {!cfg && !error && <PageLoading label="Loading version configuration…" />}
 
@@ -113,52 +121,69 @@ export default function VersionPage() {
 
           <Card title="Publish new version metadata">
             <div className="space-y-4">
-              <label className="block">
-                <span className="text-xs font-medium text-slate-600">Current version (semver)</span>
-                <input
+              <Field
+                label="Current version (semver)"
+                htmlFor="currentVersion"
+                required
+                error={currentVersion && !SEMVER.test(currentVersion.trim()) ? "Must be semver-like, e.g. 1.2.3" : null}
+              >
+                <Input
+                  id="currentVersion"
                   value={currentVersion}
                   onChange={(e) => setCurrentVersion(e.target.value)}
                   placeholder="1.2.0"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                  autoComplete="off"
+                  inputMode="decimal"
+                  invalid={Boolean(currentVersion) && !SEMVER.test(currentVersion.trim())}
                 />
-              </label>
-              <label className="block">
-                <span className="text-xs font-medium text-slate-600">Minimum supported version (semver)</span>
-                <input
+              </Field>
+              <Field
+                label="Minimum supported version (semver)"
+                htmlFor="minSupportedVersion"
+                required
+                error={minSupportedVersion && !SEMVER.test(minSupportedVersion.trim()) ? "Must be semver-like, e.g. 1.0.0" : null}
+              >
+                <Input
+                  id="minSupportedVersion"
                   value={minSupportedVersion}
                   onChange={(e) => setMinSupportedVersion(e.target.value)}
                   placeholder="1.0.0"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                  autoComplete="off"
+                  inputMode="decimal"
+                  invalid={Boolean(minSupportedVersion) && !SEMVER.test(minSupportedVersion.trim())}
                 />
-              </label>
-              <label className="block">
-                <span className="text-xs font-medium text-slate-600">Update URL (https)</span>
-                <input
+              </Field>
+              <Field
+                label="Update URL (https)"
+                htmlFor="updateUrl"
+                hint="Where clients are sent to download the new version. Leave empty if not applicable."
+                error={updateUrl.trim() && !/^https:\/\//.test(updateUrl.trim()) ? "Must start with https://" : null}
+              >
+                <Input
+                  id="updateUrl"
+                  type="url"
                   value={updateUrl}
                   onChange={(e) => setUpdateUrl(e.target.value)}
                   placeholder="https://example.com/download"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                  autoComplete="off"
+                  invalid={Boolean(updateUrl.trim()) && !/^https:\/\//.test(updateUrl.trim())}
                 />
-              </label>
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={forceUpdate}
-                  onChange={(e) => setForceUpdate(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
-                />
-                Force update (block older clients)
-              </label>
-              <label className="block">
-                <span className="text-xs font-medium text-slate-600">Release notes (optional)</span>
-                <textarea
+              </Field>
+              <Checkbox
+                checked={forceUpdate}
+                onChange={(e) => setForceUpdate(e.target.checked)}
+                label="Force update (block older clients)"
+              />
+              <Field label="Release notes (optional)" htmlFor="releaseNotes" hint={`${releaseNotes.length}/4000 characters`}>
+                <Textarea
+                  id="releaseNotes"
                   value={releaseNotes}
                   onChange={(e) => setReleaseNotes(e.target.value)}
-                  rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                  rows={4}
+                  maxLength={4000}
                   placeholder="What changed in this release?"
                 />
-              </label>
+              </Field>
               <Button disabled={!formValid} onClick={() => setConfirm(true)}>
                 <Send className="h-4 w-4" /> Publish
               </Button>

@@ -4,8 +4,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { DecodedIdToken } from "firebase-admin/auth";
-import type { UserRecord } from "@/lib/db/types";
+import type { ApiKeyScope, UserRecord } from "@/lib/db/types";
 import { requireAdminSdk } from "@/lib/firebase-admin";
+import { API_KEY_HEADER, hasScope, verifyApiKey } from "@/lib/api/api-keys";
 import { ConfigError, loadConfig, type AppConfig } from "@/lib/config";
 import { ApiError, errorBody, internalError, isApiError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
@@ -17,7 +18,12 @@ export type AuthContext = {
   email: string | null;
   displayName: string | null;
   isAdmin: boolean;
-  decoded: DecodedIdToken;
+  /** How the principal authenticated. API keys can never be administrators. */
+  via: "firebase" | "api_key";
+  /** Present only for API-key principals. */
+  apiKey: { id: string; name: string; scopes: ApiKeyScope[] } | null;
+  /** Verified Firebase token (null for API-key principals). */
+  decoded: DecodedIdToken | null;
 };
 
 export type HandlerCtx = {
@@ -32,6 +38,12 @@ export type HandlerCtx = {
 
 export type RouteOptions = {
   auth?: "none" | "user" | "admin";
+  /**
+   * Permission required when the caller authenticates with a client API key
+   * (`X-API-Key`). Routes without a scope reject API keys entirely (fail
+   * closed); Firebase ID-token callers are unaffected.
+   */
+  scope?: ApiKeyScope;
   /** "required" (default) loads config and the store; "optional" allows missing config. */
   config?: "required" | "optional" | "none";
   rateLimit?: { limit: number; windowSec: number; bucket: string };
@@ -78,7 +90,7 @@ function corsHeaders(req: NextRequest, config: AppConfig | null): Record<string,
   const origin = req.headers.get("origin");
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization,Content-Type,X-Idempotency-Key,X-Request-Id",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,X-API-Key,X-Idempotency-Key,X-Request-Id",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
@@ -94,7 +106,10 @@ function corsHeaders(req: NextRequest, config: AppConfig | null): Record<string,
 async function verifyBearerToken(req: NextRequest): Promise<DecodedIdToken> {
   const header = req.headers.get("authorization") ?? "";
   if (!header.toLowerCase().startsWith("bearer ")) {
-    throw new ApiError("UNAUTHENTICATED", "Missing Authorization: Bearer <Firebase ID token>.");
+    throw new ApiError(
+      "UNAUTHENTICATED",
+      "Missing credentials. Send Authorization: Bearer <Firebase ID token> or X-API-Key: <client API key>."
+    );
   }
   const token = header.slice(7).trim();
   if (!token) throw new ApiError("UNAUTHENTICATED", "Empty bearer token.");
@@ -114,13 +129,53 @@ async function verifyBearerToken(req: NextRequest): Promise<DecodedIdToken> {
   }
 }
 
+/**
+ * Authenticate with a client API key. API keys act on behalf of the Firebase
+ * UID they were issued for, are never administrators, and must carry the
+ * scope the route declares.
+ */
+async function resolveApiKeyAuth(
+  rawKey: string,
+  store: Store,
+  mode: "user" | "admin",
+  requiredScope: ApiKeyScope | undefined
+): Promise<AuthContext> {
+  if (mode === "admin") {
+    throw new ApiError("FORBIDDEN", "Administrator endpoints require a Firebase ID token; API keys are not accepted.");
+  }
+  const { record } = await verifyApiKey(store, rawKey);
+  if (!requiredScope) {
+    throw new ApiError("FORBIDDEN", "This endpoint does not accept API keys.");
+  }
+  if (!hasScope(record.scopes, requiredScope)) {
+    throw new ApiError("FORBIDDEN", `API key is missing the required scope: ${requiredScope}.`, {
+      details: { requiredScope, grantedScopes: record.scopes },
+    });
+  }
+  return {
+    uid: record.subjectUid,
+    email: null,
+    displayName: null,
+    isAdmin: false,
+    via: "api_key",
+    apiKey: { id: record.id, name: record.name, scopes: record.scopes },
+    decoded: null,
+  };
+}
+
 async function resolveAuth(
   req: NextRequest,
   store: Store,
   config: AppConfig,
-  mode: "none" | "user" | "admin"
+  mode: "none" | "user" | "admin",
+  requiredScope: ApiKeyScope | undefined
 ): Promise<AuthContext | null> {
   if (mode === "none") return null;
+  const hasBearer = (req.headers.get("authorization") ?? "").toLowerCase().startsWith("bearer ");
+  const apiKeyHeader = req.headers.get(API_KEY_HEADER);
+  if (!hasBearer && apiKeyHeader && apiKeyHeader.trim()) {
+    return resolveApiKeyAuth(apiKeyHeader, store, mode, requiredScope);
+  }
   const decoded = await verifyBearerToken(req);
   const uid = decoded.uid;
   if (!uid) throw new ApiError("TOKEN_INVALID", "Token has no subject (uid).");
@@ -150,6 +205,8 @@ async function resolveAuth(
     email,
     displayName: decoded.name ?? null,
     isAdmin,
+    via: "firebase",
+    apiKey: null,
     decoded,
   };
 }
@@ -195,7 +252,7 @@ export function apiRoute(
 
       if ((opts.auth ?? "user") !== "none") {
         if (!store || !config) throw new ConfigError(["FIREBASE_* server configuration"]);
-        auth = await resolveAuth(req, store, config, opts.auth ?? "user");
+        auth = await resolveAuth(req, store, config, opts.auth ?? "user", opts.scope);
       }
 
       // Rate limiting (fail-open on infra errors; logged).
@@ -253,6 +310,7 @@ export function apiRoute(
           durationMs,
           uid: auth?.uid,
           admin: auth?.isAdmin ? true : undefined,
+          credentialId: auth?.apiKey?.id, // public key id (ak_…), never the secret
         });
       }
     }

@@ -9,7 +9,10 @@
     "users": {
       ".read": false,
       ".write": false,
-      ".indexOn": ["email", "createdAt"]
+      ".indexOn": [
+        "email",
+        "createdAt"
+      ]
     },
     "usersByEmail": {
       ".read": false,
@@ -18,7 +21,13 @@
     "files": {
       ".read": false,
       ".write": false,
-      ".indexOn": ["uid", "createdAt", "expiresAt", "status", "category"]
+      ".indexOn": [
+        "uid",
+        "createdAt",
+        "expiresAt",
+        "status",
+        "category"
+      ]
     },
     "filesByUid": {
       ".read": false,
@@ -27,7 +36,11 @@
     "uploads": {
       ".read": false,
       ".write": false,
-      ".indexOn": ["ticketExpiresAt", "uid", "status"]
+      ".indexOn": [
+        "ticketExpiresAt",
+        "uid",
+        "status"
+      ]
     },
     "uploadsByIdem": {
       ".read": false,
@@ -41,6 +54,10 @@
       ".read": false,
       ".write": false
     },
+    "driveIdentities": {
+      ".read": false,
+      ".write": false
+    },
     "providerClaims": {
       ".read": false,
       ".write": false
@@ -49,10 +66,22 @@
       ".read": false,
       ".write": false
     },
+    "apiKeys": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "subjectUid",
+        "status"
+      ]
+    },
     "auditLogs": {
       ".read": false,
       ".write": false,
-      ".indexOn": ["at", "action", "actorUid"]
+      ".indexOn": [
+        "at",
+        "action",
+        "actorUid"
+      ]
     },
     "cleanupRuns": {
       ".read": false,
@@ -61,7 +90,9 @@
     "cleanupRetries": {
       ".read": false,
       ".write": false,
-      ".indexOn": ["nextAttemptAt"]
+      ".indexOn": [
+        "nextAttemptAt"
+      ]
     },
     "appConfig": {
       ".read": false,

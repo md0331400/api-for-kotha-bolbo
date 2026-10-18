@@ -83,6 +83,29 @@ sessions/reservations, Drive accounts + encrypted tokens, admin roles, audit log
 retries, app-version config, and notification tokens. See `src/lib/db/types.ts` for the record
 shapes.
 
+### Schema additions (backward-compatible, no migration script required)
+
+The following nodes were added for duplicate-account protection and client API keys. Existing
+data is untouched; records are back-filled lazily.
+
+| Node | Purpose | Backfill |
+|---|---|---|
+| `driveIdentities/{sub:<id> \| email:<email>}` → `accountId` | Atomic uniqueness index for Google accounts | Written on the next successful connect/reconnect of each account. |
+| `driveAccounts/{id}.googleAccountId`, `.normalizedEmail` | Stable identity fields | Optional; filled on next connect. Legacy records are still matched by e-mail. |
+| `apiKeys/{ak_…}` | Client API key metadata (hash only) | New. |
+
+**Manual steps after deploying this version**
+
+1. Re-deploy `firebase/database.rules.json` (adds `driveIdentities` and `apiKeys`, both
+   server-only). Without this step the Admin SDK still works (it bypasses rules), but keep the rules
+   in sync.
+2. Open **Drive Accounts** in the dashboard. If a *"duplicate account group detected"* banner
+   appears, those records pre-date the protection. They are **not** deleted automatically: wait
+   until the redundant record's files have expired (60-day TTL) or been removed, then disconnect it.
+   New connections of that Google account update the primary record only.
+3. No new environment variables are required. `API_SECRET_KEY` remains a server-side HMAC secret
+   and is **not** a client API key — generate client keys in **Admin → API Keys**.
+
 ## 4. Scheduled cleanup (Vercel Cron)
 
 `vercel.json` registers:

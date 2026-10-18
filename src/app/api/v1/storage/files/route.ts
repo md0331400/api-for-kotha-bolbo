@@ -32,5 +32,5 @@ export const GET = apiRoute(
       pageMeta(q.page, q.pageSize, result.total)
     );
   },
-  { auth: "user", rateLimit: { limit: 120, windowSec: 60, bucket: "files" } }
+  { auth: "user", scope: "storage:read", rateLimit: { limit: 120, windowSec: 60, bucket: "files" } }
 );

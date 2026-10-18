@@ -6,8 +6,64 @@
   color-scheme: light;
 }
 
+html {
+  /* The dashboard is a light theme; keep UA form controls light too. */
+  color-scheme: light;
+}
+
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/*
+ * Form controls: explicit colors so typed text can never become invisible.
+ * (UA defaults, OS dark mode, and "force dark" modes otherwise decide the
+ * control background independently of the inherited text color.)
+ */
+@layer base {
+  input,
+  textarea,
+  select {
+    color-scheme: light;
+    color: theme("colors.slate.900");
+    background-color: theme("colors.white");
+    caret-color: theme("colors.brand.600");
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: theme("colors.slate.400");
+    opacity: 1;
+  }
+  input:disabled,
+  textarea:disabled,
+  select:disabled {
+    color: theme("colors.slate.500");
+    background-color: theme("colors.slate.100");
+    -webkit-text-fill-color: theme("colors.slate.500");
+  }
+  select option,
+  select optgroup {
+    color: theme("colors.slate.900");
+    background-color: theme("colors.white");
+  }
+  select option:checked {
+    color: theme("colors.brand.900");
+    background-color: theme("colors.brand.50");
+  }
+  /* Browser autofill paints its own background; keep text readable. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: theme("colors.slate.900");
+    caret-color: theme("colors.brand.600");
+    box-shadow: 0 0 0 1000px theme("colors.brand.50") inset;
+    transition: background-color 9999s ease-out 0s;
+  }
+  input[type="search"]::-webkit-search-cancel-button {
+    cursor: pointer;
+  }
 }
 
 ::selection {

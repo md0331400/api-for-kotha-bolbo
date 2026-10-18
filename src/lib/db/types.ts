@@ -110,6 +110,13 @@ export interface DriveAccountRecord {
   /** Folder in the connected account that owns every managed object. */
   managedFolderId: string | null;
   disabledReason: string | null;
+  /**
+   * Google's stable, immutable account identifier (`sub` from verified user
+   * info). Optional for records created before duplicate protection existed.
+   */
+  googleAccountId?: string | null;
+  /** Lower-cased, trimmed account email used as the secondary duplicate key. */
+  normalizedEmail?: string | null;
 }
 
 export interface DriveTokenRecord {
@@ -119,6 +126,43 @@ export interface DriveTokenRecord {
   scope: string;
   obtainedAt: number;
   raw?: Record<string, unknown>;
+}
+
+/** Permission scopes that a client API key may be granted. */
+export const API_KEY_SCOPES = [
+  "storage:read",
+  "storage:write",
+  "storage:delete",
+  "notifications:write",
+] as const;
+export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
+
+export type ApiKeyStatus = "active" | "revoked";
+
+/**
+ * Client API key metadata. Only a SHA-256 hash of the secret is stored — the
+ * raw key is shown once at creation and can never be recovered.
+ */
+export interface ApiKeyRecord {
+  /** Public identifier embedded in the key (`ak_…`). */
+  id: string;
+  name: string;
+  /** Firebase UID the key acts on behalf of (ownership/quota subject). */
+  subjectUid: string;
+  scopes: ApiKeyScope[];
+  /** Hex SHA-256 of the full raw key. */
+  secretHash: string;
+  /** Non-secret display prefix, e.g. `kb_ak_3fT9…`. */
+  prefix: string;
+  status: ApiKeyStatus;
+  createdAt: number;
+  createdBy: string;
+  createdByEmail: string | null;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
+  revokedBy: string | null;
+  /** Optional absolute expiry (ms epoch). */
+  expiresAt: number | null;
 }
 
 export interface AuditLogRecord {

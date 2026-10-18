@@ -21,6 +21,45 @@ must refresh them via the Firebase SDK.
 Admin endpoints additionally require the caller to be an administrator **on the server**
 (`admins/{uid}` record, or the `ADMIN_EMAILS` bootstrap list).
 
+### Client API keys (alternative for server-to-server clients)
+
+Administrators can generate **client API keys** in the dashboard (**API Keys** tab) or via
+`POST /api/v1/admin/api-keys`. A key is a separate credential system from Firebase ID tokens and is
+unrelated to the server-side `API_SECRET_KEY` (an HMAC secret that is never issued to anyone).
+
+```
+X-API-Key: kb_<16 hex chars>_<43 base64url chars>
+```
+
+Example:
+
+```bash
+curl -H "X-API-Key: kb_0123456789abcdef_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdefg" \
+     "https://swkf.vercel.app/api/v1/storage/files?page=1&pageSize=20"
+```
+
+Semantics:
+
+* The request runs **as the key's subject user** (the Firebase UID chosen at creation). Ownership,
+  quota, restriction, and upload/download protections apply exactly as for that user's ID token.
+* Each key carries explicit **scopes**; a route declares the scope it needs and rejects keys
+  without it (`403 FORBIDDEN`, `details.requiredScope`):
+
+  | Scope | Grants |
+  |---|---|
+  | `storage:read` | `GET /storage/quota`, `GET /storage/files`, `GET /storage/files/:id`, `GET /storage/files/:id/download` |
+  | `storage:write` | `POST /storage/upload-ticket`, `POST /storage/upload-confirm` |
+  | `storage:delete` | `DELETE /storage/files/:id` |
+  | `notifications:write` | `POST /notifications/token` |
+
+* **Admin endpoints never accept API keys** (always `403`), and routes that do not declare a scope
+  reject keys (fail closed). If both `Authorization: Bearer` and `X-API-Key` are sent, the Firebase
+  token is used.
+* Only a SHA-256 hash of the key is stored; verification is constant-time. The raw key is shown
+  **once** at creation and cannot be retrieved later. Revocation is immediate (`401 TOKEN_INVALID`);
+  expired keys return `401 TOKEN_EXPIRED`.
+* Keys are for trusted backends only — never embed them in the Android app or browser code.
+
 ## Response envelopes
 
 Success (single resource):
@@ -344,6 +383,16 @@ uploads, last cleanup run, retry-queue depth. Everything reflects the database (
 | `PATCH /api/v1/admin/drive-accounts/:id` | `{ "action": "enable" \| "disable" \| "retry", "reason": "…" }` |
 | `POST /api/v1/admin/drive-accounts/:id/test` | Real create+delete connectivity test; refreshes capacity info. |
 | `DELETE /api/v1/admin/drive-accounts/:id?confirm=DISCONNECT` | Destroys stored credentials. Does not touch the Google account's contents. |
+| `GET /api/v1/admin/drive-accounts/duplicates` | Reports groups of records that refer to the same Google account (by stable Google account id or normalized email). Informational only — nothing is merged or deleted. |
+
+**Duplicate protection.** The callback resolves the Google account identity (`sub` from the
+UserInfo endpoint, ID-token fallback, plus the verified e-mail normalized to lower case) and
+atomically claims it in `driveIdentities/` before inserting a record. Connecting a Google account
+that already has a record (including records created before this protection, matched by e-mail)
+**reconnects** it instead: the stored refresh token is replaced with the newly issued one, a
+`disconnected`/`error` account becomes `enabled` again (an admin-`disabled` account stays
+disabled), and the browser is redirected with `?reconnected=1`. If Google does not return a refresh
+token nothing is written. Concurrent callbacks for the same account converge on one record.
 
 ### Users
 
@@ -367,6 +416,15 @@ uploads, last cleanup run, retry-queue depth. Everything reflects the database (
 |---|---|
 | `GET /api/v1/admin/app-version` | Current configuration (or unpublished). |
 | `PUT /api/v1/admin/app-version` | Publish `{ currentVersion, minSupportedVersion, updateUrl, forceUpdate, releaseNotes }` — validated (semver, https URL), audited. |
+
+### API keys
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/v1/admin/api-keys` | List keys: id, name, masked prefix, subject UID, scopes, status, created/last-used/revoked/expiry timestamps. Never the secret or its hash. |
+| `POST /api/v1/admin/api-keys` | `{ "name", "subjectUid", "scopes": [...], "expiresInDays"? }` → `201 { key, rawKey }`. The subject must be an existing user. `rawKey` is returned only here. Rate limited to 10 per hour per administrator; audited (`apikey.create`). |
+| `PATCH /api/v1/admin/api-keys/:id` | `{ "action": "revoke" }` — immediate, idempotent, audited (`apikey.revoke`). |
+| `DELETE /api/v1/admin/api-keys/:id` | Deletes metadata of a **revoked** key (`409` while active); the audit trail is kept (`apikey.delete`). |
 
 ### Logs & jobs
 

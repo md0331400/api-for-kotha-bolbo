@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Filter, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/admin/auth-context";
-import { api, ApiClientError } from "@/lib/admin/api-client";
+import { api, ApiClientError, describeError, type UiError } from "@/lib/admin/api-client";
 import { formatBytes, formatDate } from "@/lib/format";
 import {
   Badge,
@@ -12,6 +12,7 @@ import {
   ConfirmDialog,
   EmptyState,
   ErrorBanner,
+  Input,
   PageLoading,
   Pagination,
   SearchInput,
@@ -56,7 +57,8 @@ export default function FilesPage() {
   const [rows, setRows] = useState<AdminFile[] | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UiError | null>(null);
+  const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [target, setTarget] = useState<AdminFile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,6 +66,7 @@ export default function FilesPage() {
   const load = useCallback(async () => {
     if (!me) return;
     setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: "25" });
       if (q.trim()) params.set("q", q.trim());
@@ -71,15 +74,14 @@ export default function FilesPage() {
       if (status) params.set("status", status);
       if (expiringDays) params.set("expiringInDays", expiringDays);
       if (uid.trim()) params.set("uid", uid.trim());
-      const res = await api.get<{ data: AdminFile[]; pagination: { total: number; totalPages: number } }>(
-        me,
-        `/api/v1/admin/files?${params}`
-      );
+      const res = await api.getPage<AdminFile>(me, `/api/v1/admin/files?${params}`);
       setRows(res.data);
       setTotal(res.pagination.total);
       setTotalPages(res.pagination.totalPages);
     } catch (e) {
-      setError(e instanceof ApiClientError ? e.message : "Failed to load files.");
+      setError(describeError(e, "Failed to load files."));
+    } finally {
+      setLoading(false);
     }
   }, [me, q, category, status, expiringDays, uid, page]);
 
@@ -113,11 +115,12 @@ export default function FilesPage() {
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <SearchInput value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search filename or ID…" />
-          <input
+          <Input
             value={uid}
             onChange={(e) => { setUid(e.target.value); setPage(1); }}
             placeholder="Filter by UID…"
-            className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+            aria-label="Filter by UID"
+            className="w-full sm:w-44"
           />
           <Select
             label="Category"
@@ -161,7 +164,11 @@ export default function FilesPage() {
         </div>
       </Card>
 
-      {error && <ErrorBanner message={error} />}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error.message} code={error.code} requestId={error.requestId} onRetry={load} retrying={loading} />
+        </div>
+      )}
       {!rows && !error && <PageLoading label="Loading files…" />}
 
       {rows && rows.length === 0 && (

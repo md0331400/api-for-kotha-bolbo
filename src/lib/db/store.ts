@@ -1,4 +1,5 @@
 import type {
+  ApiKeyRecord,
   AppVersionRecord,
   AuditLogRecord,
   CleanupRetryRecord,
@@ -127,7 +128,17 @@ export interface Store {
     accountEmail: string | null;
     displayName: string | null;
     scope: string;
+    /** Pre-allocated id (used when an identity claim was made first). */
+    id?: string;
+    googleAccountId?: string | null;
   }): Promise<DriveAccountRecord>;
+  /**
+   * Atomically claim a Google identity key (e.g. `sub:…` or `email:…`) for an
+   * account. Returns the account id that owns the key after the call — the
+   * supplied id when the claim succeeded, otherwise the existing owner.
+   */
+  claimDriveIdentity(identityKey: string, accountId: string): Promise<string>;
+  getDriveIdentityOwner(identityKey: string): Promise<string | null>;
   updateDriveAccount(
     id: string,
     patch: Partial<
@@ -145,6 +156,8 @@ export interface Store {
         | "quotaInfo"
         | "managedFolderId"
         | "disabledReason"
+        | "googleAccountId"
+        | "normalizedEmail"
       >
     >
   ): Promise<DriveAccountRecord | null>;
@@ -190,6 +203,17 @@ export interface Store {
   listNotificationTokens(uid: string): Promise<NotificationTokenRecord[]>;
   markNotificationSent(rec: NotificationSentRecord): Promise<boolean>;
   listNotificationsSentForFile(fileId: string): Promise<NotificationSentRecord[]>;
+
+  // ---- client API keys ---------------------------------------------------
+  createApiKey(rec: ApiKeyRecord): Promise<void>;
+  getApiKey(id: string): Promise<ApiKeyRecord | null>;
+  listApiKeys(): Promise<ApiKeyRecord[]>;
+  updateApiKey(
+    id: string,
+    patch: Partial<Pick<ApiKeyRecord, "status" | "lastUsedAt" | "revokedAt" | "revokedBy" | "name">>
+  ): Promise<ApiKeyRecord | null>;
+  /** Permanently removes key metadata. Callers must ensure the key is revoked. */
+  deleteApiKey(id: string): Promise<boolean>;
 
   // ---- rate limiting -----------------------------------------------------
   rateLimitHit(
