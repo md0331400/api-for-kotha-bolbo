@@ -310,7 +310,7 @@ export function apiRoute(
           durationMs,
           uid: auth?.uid,
           admin: auth?.isAdmin ? true : undefined,
-          apiKeyId: auth?.apiKey?.id,
+          credentialId: auth?.apiKey?.id, // public key id (ak_…), never the secret
         });
       }
     }

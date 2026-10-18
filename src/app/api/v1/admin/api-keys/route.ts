@@ -111,7 +111,7 @@ export const POST = apiRoute(
       requestId: ctx.requestId,
       details: { name: rec.name, subjectUid: rec.subjectUid, scopes: rec.scopes, expiresAt: rec.expiresAt },
     });
-    logger.info("apikey.created", { keyId: rec.id, requestId: ctx.requestId });
+    logger.info("apikey.created", { credentialId: rec.id, requestId: ctx.requestId });
     return dataResponse({ key: publicApiKey(rec), rawKey: generated.rawKey }, { status: 201 });
   },
   { auth: "admin", rateLimit: { limit: 10, windowSec: 3600, bucket: "apikey-create" } }
