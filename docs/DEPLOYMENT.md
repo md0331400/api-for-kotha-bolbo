@@ -88,13 +88,17 @@ shapes.
 `vercel.json` registers:
 
 ```json
-{ "crons": [{ "path": "/api/v1/jobs/cleanup", "schedule": "0 */6 * * *" }] }
+{ "crons": [{ "path": "/api/v1/jobs/cleanup", "schedule": "0 0 * * *" }] }
 ```
 
 Vercel invokes the endpoint with `Authorization: Bearer ${CRON_SECRET}` whenever `CRON_SECRET` is
-set. Without `CRON_SECRET` the endpoint refuses unauthenticated calls. Free-tier plans include a
-daily cron only — on those plans the schedule effectively runs once a day, or trigger cleanup
-manually from the dashboard (Logs & Jobs → Run cleanup now). Paid plans honor the 6-hour schedule.
+set. Without `CRON_SECRET` the endpoint refuses unauthenticated calls. Note that **Hobby-plan cron
+expressions may not run more than once a day — a schedule such as `0 */6 * * *` aborts the entire
+deployment with "Hobby accounts are limited to daily cron jobs."** Cleanup therefore runs daily at
+00:00 UTC on Hobby (invocation may be delayed up to ±59 min); expiry enforcement is tolerant of a
+daily pass. On Pro, minute-granular schedules are honored and a more frequent cadence can be
+restored in `vercel.json`. Cleanup can also be triggered manually from the dashboard
+(Logs & Jobs → Run cleanup now) or via `POST /api/v1/admin/jobs/cleanup`.
 
 ## 5. Deploy
 
