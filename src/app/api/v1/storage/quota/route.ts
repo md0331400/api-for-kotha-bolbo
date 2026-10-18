@@ -30,5 +30,5 @@ export const GET = apiRoute(
       categoryBytes,
     });
   },
-  { auth: "user", rateLimit: { limit: 60, windowSec: 60, bucket: "quota" } }
+  { auth: "user", scope: "storage:read", rateLimit: { limit: 60, windowSec: 60, bucket: "quota" } }
 );

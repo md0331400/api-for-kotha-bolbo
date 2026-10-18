@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Database, Lock, Mail } from "lucide-react";
 import { useAuth } from "@/lib/admin/auth-context";
-import { Button, ErrorBanner, InfoBanner } from "@/components/admin/ui";
+import { Button, ErrorBanner, InfoBanner, Input } from "@/components/admin/ui";
 
 export default function AdminLoginPage() {
   const { user, session, loading, firebaseConfigured, authError, signInGoogle, signInEmail } = useAuth();
@@ -87,31 +87,31 @@ export default function AdminLoginPage() {
                   }}
                 >
                   <label className="block">
-                    <span className="text-xs font-medium text-slate-600">Email</span>
-                    <div className="mt-1 flex items-center rounded-lg border border-slate-300 focus-within:border-brand-500">
-                      <Mail className="ml-3 h-4 w-4 text-slate-400" />
-                      <input
+                    <span className="text-xs font-medium text-slate-700">Email</span>
+                    <div className="relative mt-1">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
                         type="email"
                         required
                         autoComplete="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-lg border-0 px-3 py-2 text-sm focus:outline-none"
+                        className="pl-9"
                         placeholder="admin@example.com"
                       />
                     </div>
                   </label>
                   <label className="block">
-                    <span className="text-xs font-medium text-slate-600">Password</span>
-                    <div className="mt-1 flex items-center rounded-lg border border-slate-300 focus-within:border-brand-500">
-                      <Lock className="ml-3 h-4 w-4 text-slate-400" />
-                      <input
+                    <span className="text-xs font-medium text-slate-700">Password</span>
+                    <div className="relative mt-1">
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
                         type="password"
                         required
                         autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-lg border-0 px-3 py-2 text-sm focus:outline-none"
+                        className="pl-9"
                         placeholder="••••••••"
                       />
                     </div>

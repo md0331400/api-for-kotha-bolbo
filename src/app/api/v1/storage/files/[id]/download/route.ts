@@ -57,5 +57,5 @@ export const GET = apiRoute(
       headers,
     });
   },
-  { auth: "user", rateLimit: { limit: 60, windowSec: 60, bucket: "download" } }
+  { auth: "user", scope: "storage:read", rateLimit: { limit: 60, windowSec: 60, bucket: "download" } }
 );

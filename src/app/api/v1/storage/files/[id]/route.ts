@@ -18,7 +18,7 @@ export const GET = apiRoute(
     }
     return dataResponse(toPublicFile(file));
   },
-  { auth: "user", rateLimit: { limit: 120, windowSec: 60, bucket: "file-meta" } }
+  { auth: "user", scope: "storage:read", rateLimit: { limit: 120, windowSec: 60, bucket: "file-meta" } }
 );
 
 /**
@@ -59,5 +59,5 @@ export const DELETE = apiRoute(
     });
     return dataResponse({ id: file.id, status: "deleted", alreadyDeleted: Boolean(res.alreadyGone) });
   },
-  { auth: "user", rateLimit: { limit: 60, windowSec: 60, bucket: "file-delete" } }
+  { auth: "user", scope: "storage:delete", rateLimit: { limit: 60, windowSec: 60, bucket: "file-delete" } }
 );

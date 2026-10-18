@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Search, UserRound } from "lucide-react";
 import { useAuth } from "@/lib/admin/auth-context";
-import { api, ApiClientError } from "@/lib/admin/api-client";
+import { api, ApiClientError, describeError, type UiError } from "@/lib/admin/api-client";
 import { formatBytes, formatDate } from "@/lib/format";
 import {
   Badge,
@@ -12,6 +12,7 @@ import {
   ConfirmDialog,
   EmptyState,
   ErrorBanner,
+  Input,
   PageLoading,
   Pagination,
   SearchInput,
@@ -48,7 +49,8 @@ export default function UsersPage() {
   const [rows, setRows] = useState<AdminUser[] | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UiError | null>(null);
+  const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<UserDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [quotaInput, setQuotaInput] = useState("");
@@ -59,18 +61,18 @@ export default function UsersPage() {
   const load = useCallback(async () => {
     if (!me) return;
     setError(null);
+    setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: "20" });
       if (q.trim()) params.set("q", q.trim());
-      const res = await api.get<{ data: AdminUser[]; pagination: { total: number; totalPages: number } }>(
-        me,
-        `/api/v1/admin/users?${params}`
-      );
+      const res = await api.getPage<AdminUser>(me, `/api/v1/admin/users?${params}`);
       setRows(res.data);
       setTotal(res.pagination.total);
       setTotalPages(res.pagination.totalPages);
     } catch (e) {
-      setError(e instanceof ApiClientError ? e.message : "Failed to load users.");
+      setError(describeError(e, "Failed to load users."));
+    } finally {
+      setLoading(false);
     }
   }, [me, q, page]);
 
@@ -137,12 +139,16 @@ export default function UsersPage() {
 
       <div className="mb-4 flex items-center gap-3">
         <SearchInput value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search by UID, email, or name…" />
-        <Button variant="secondary" size="sm" onClick={load}>
+        <Button variant="secondary" size="sm" onClick={load} loading={loading}>
           <Search className="h-3.5 w-3.5" /> Search
         </Button>
       </div>
 
-      {error && <ErrorBanner message={error} />}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error.message} code={error.code} requestId={error.requestId} onRetry={load} retrying={loading} />
+        </div>
+      )}
       {!rows && !error && <PageLoading label="Loading users…" />}
 
       {rows && rows.length === 0 && (
@@ -231,15 +237,17 @@ export default function UsersPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-slate-600">Storage quota (GiB)</label>
+                <label className="text-xs font-medium text-slate-700">Storage quota (GiB)</label>
                 <div className="mt-1 flex items-center gap-2">
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     step={0.5}
+                    inputMode="decimal"
                     value={quotaInput}
                     onChange={(e) => setQuotaInput(e.target.value)}
-                    className="w-36 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                    className="w-36"
+                    aria-label="Storage quota in GiB"
                   />
                   <Button variant="secondary" size="sm" onClick={() => setConfirm("quota")}>
                     Change quota

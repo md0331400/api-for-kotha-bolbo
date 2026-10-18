@@ -2,7 +2,7 @@
 
 /** Shared presentational components for the admin dashboard. */
 import React, { useEffect, useRef } from "react";
-import { AlertCircle, Check, Loader2, X } from "lucide-react";
+import { AlertCircle, Check, Loader2, RefreshCw, X } from "lucide-react";
 
 export function Spinner({ className = "h-5 w-5" }: { className?: string }) {
   return <Loader2 className={`animate-spin text-brand-500 ${className}`} aria-label="Loading" />;
@@ -126,14 +126,42 @@ export function Button({
   );
 }
 
-export function ErrorBanner({ message, requestId }: { message: string; requestId?: string }) {
+export function ErrorBanner({
+  message,
+  requestId,
+  code,
+  onRetry,
+  retrying,
+}: {
+  message: string;
+  requestId?: string;
+  code?: string;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
-      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-      <div>
-        <p>{message}</p>
-        {requestId && <p className="mt-0.5 text-xs text-rose-500">Request ID: {requestId}</p>}
+    <div
+      className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+      role="alert"
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+        <div className="min-w-0">
+          <p className="break-words">{message}</p>
+          {(code || requestId) && (
+            <p className="mt-0.5 text-xs text-rose-500">
+              {code && <span className="font-mono">{code}</span>}
+              {code && requestId && " · "}
+              {requestId && <>Request ID: <span className="font-mono">{requestId}</span></>}
+            </p>
+          )}
+        </div>
       </div>
+      {onRetry && (
+        <Button variant="secondary" size="sm" onClick={onRetry} loading={retrying} className="shrink-0">
+          <RefreshCw className="h-3.5 w-3.5" /> Retry
+        </Button>
+      )}
     </div>
   );
 }
@@ -206,12 +234,14 @@ export function ConfirmDialog({
             <span className="text-xs font-medium text-slate-600">
               Type <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{typedConfirmation}</code> to confirm
             </span>
-            <input
+            <Input
               ref={inputRef}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+              className="mt-1"
               placeholder={typedConfirmation}
+              autoComplete="off"
+              autoFocus
             />
           </label>
         )}
@@ -228,6 +258,127 @@ export function ConfirmDialog({
   );
 }
 
+/**
+ * Shared form-control styling. Colors are set EXPLICITLY (text, background,
+ * placeholder, border, focus ring, disabled) so entered text is always
+ * readable regardless of UA defaults, OS dark mode, or forced-dark browsers.
+ */
+export const CONTROL_BASE =
+  "block w-full rounded-lg border bg-white text-sm text-slate-900 caret-brand-600 shadow-sm transition-colors " +
+  "placeholder:text-slate-400 " +
+  "focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 " +
+  "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 " +
+  "read-only:bg-slate-50";
+
+export function controlClass(opts?: { invalid?: boolean; className?: string }): string {
+  const border = opts?.invalid
+    ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/30"
+    : "border-slate-300 hover:border-slate-400";
+  return `${CONTROL_BASE} ${border} ${opts?.className ?? ""}`.trim();
+}
+
+export const Input = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }
+>(function Input({ className = "", invalid, ...rest }, ref) {
+  return (
+    <input
+      ref={ref}
+      aria-invalid={invalid || undefined}
+      className={controlClass({ invalid, className: `px-3 py-2 ${className}` })}
+      {...rest}
+    />
+  );
+});
+
+export const Textarea = React.forwardRef<
+  HTMLTextAreaElement,
+  React.TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }
+>(function Textarea({ className = "", invalid, ...rest }, ref) {
+  return (
+    <textarea
+      ref={ref}
+      aria-invalid={invalid || undefined}
+      className={controlClass({ invalid, className: `px-3 py-2 leading-relaxed ${className}` })}
+      {...rest}
+    />
+  );
+});
+
+export const NativeSelect = React.forwardRef<
+  HTMLSelectElement,
+  React.SelectHTMLAttributes<HTMLSelectElement> & { invalid?: boolean }
+>(function NativeSelect({ className = "", invalid, children, ...rest }, ref) {
+  return (
+    <select
+      ref={ref}
+      aria-invalid={invalid || undefined}
+      className={controlClass({ invalid, className: `appearance-none bg-no-repeat py-2 pl-3 pr-9 ${className}` })}
+      style={{
+        backgroundImage:
+          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>\")",
+        backgroundPosition: "right 0.6rem center",
+      }}
+      {...rest}
+    >
+      {children}
+    </select>
+  );
+});
+
+/** Label + control + help/error text with consistent, readable colors. */
+export function Field({
+  label,
+  htmlFor,
+  hint,
+  error,
+  required,
+  children,
+  className = "",
+}: {
+  label: string;
+  htmlFor?: string;
+  hint?: React.ReactNode;
+  error?: string | null;
+  required?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`block ${className}`}>
+      <label htmlFor={htmlFor} className="mb-1 block text-xs font-medium text-slate-700">
+        {label}
+        {required && <span className="ml-0.5 text-rose-600" aria-hidden="true">*</span>}
+      </label>
+      {children}
+      {error ? (
+        <p className="mt-1 text-xs text-rose-600" role="alert">
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="mt-1 text-xs text-slate-500">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function Checkbox({
+  label,
+  className = "",
+  ...rest
+}: React.InputHTMLAttributes<HTMLInputElement> & { label: React.ReactNode }) {
+  return (
+    <label className={`inline-flex cursor-pointer items-center gap-2 text-sm text-slate-800 ${className}`}>
+      <input
+        type="checkbox"
+        className="h-4 w-4 rounded border-slate-400 bg-white text-brand-600 focus:ring-2 focus:ring-brand-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+        {...rest}
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
 export function SearchInput({
   value,
   onChange,
@@ -238,12 +389,13 @@ export function SearchInput({
   placeholder?: string;
 }) {
   return (
-    <input
+    <Input
       type="search"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none sm:w-72"
+      aria-label={placeholder}
+      className="sm:w-72"
     />
   );
 }
@@ -260,19 +412,15 @@ export function Select({
   label?: string;
 }) {
   return (
-    <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-      {label && <span>{label}</span>}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-      >
+    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+      {label && <span className="whitespace-nowrap">{label}</span>}
+      <NativeSelect value={value} onChange={(e) => onChange(e.target.value)} className="w-auto" aria-label={label}>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </label>
   );
 }

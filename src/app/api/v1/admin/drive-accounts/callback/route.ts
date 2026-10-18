@@ -1,16 +1,19 @@
 import { apiRoute } from "@/lib/api/handler";
 import { logger } from "@/lib/logger";
-import { exchangeAuthorizationCode, fetchGoogleIdentity } from "@/lib/storage/google-oauth";
-import { encryptRefreshToken, getDriveProvider, recordAccountError } from "@/lib/storage/pool";
+import { exchangeAuthorizationCode, fetchGoogleIdentity, identityFromIdToken } from "@/lib/storage/google-oauth";
+import { clearTokenCache, encryptRefreshToken, getDriveProvider, recordAccountError } from "@/lib/storage/pool";
 import { OAUTH_STATE_COOKIE, verifyOAuthState } from "@/lib/storage/oauth-state";
+import { resolveOrCreateDriveAccount } from "@/lib/storage/account-identity";
 
 /**
  * GET /api/v1/admin/drive-accounts/callback
  * Google OAuth redirect target. Authenticates the initiating administrator via
  * the signed state (there is no bearer token on a browser redirect). Exchanges
- * the code server-side, stores the refresh token encrypted, provisions the
- * managed folder, and runs a real write test — the account is only presented
- * as connected/verified after that succeeds.
+ * the code server-side, resolves the Google account identity (`sub` + email),
+ * and either creates ONE storage-account record or reconnects the existing
+ * one — the same Google account can never produce a second pool record.
+ * Credentials are stored encrypted, the managed folder is provisioned, and a
+ * real write test decides whether the account is presented as verified.
  */
 export const GET = apiRoute(
   async (ctx) => {
@@ -54,32 +57,62 @@ export const GET = apiRoute(
       redirectUri,
     });
     if (!tokens.refreshToken) {
+      // Never touch stored credentials when Google did not issue a new token.
       return fail("Google did not return a refresh token. Ensure offline access is granted and retry.");
     }
-    const identity = await fetchGoogleIdentity(tokens.accessToken);
 
-    const account = await store.createDriveAccount({
-      accountEmail: identity.email,
-      displayName: identity.name,
-      scope: tokens.scope,
-    });
+    // Verified identity: UserInfo first, ID token as fallback for `sub`.
+    const userInfo = await fetchGoogleIdentity(tokens.accessToken);
+    const fromIdToken = identityFromIdToken(tokens.idToken, config.googleOAuthClientId);
+    const identity = {
+      sub: userInfo.sub ?? fromIdToken?.sub ?? null,
+      email: userInfo.email ?? fromIdToken?.email ?? null,
+      name: userInfo.name ?? fromIdToken?.name ?? null,
+    };
+    if (!identity.sub && !identity.email) {
+      return fail("Google did not return a verifiable account identity. Grant the email scope and retry.");
+    }
+
+    let resolved;
+    try {
+      resolved = await resolveOrCreateDriveAccount(store, identity, { scope: tokens.scope });
+    } catch (e) {
+      logger.warn("drive.callback.identity_failed", { reason: e instanceof Error ? e.message : "unknown" });
+      return fail("Could not resolve the Google account identity. Retry the connection.");
+    }
+    const { account, created, conflicts } = resolved;
+
+    // Store (or rotate) the refresh token — only ever with a token Google just issued.
     await store.saveDriveToken({
       accountId: account.id,
       refreshToken: encryptRefreshToken(config, tokens.refreshToken),
       scope: tokens.scope,
       obtainedAt: Date.now(),
     });
+    clearTokenCache(account.id);
+    if (!created) {
+      // Reconnect: bring a disconnected/errored record back; keep admin "disabled".
+      const reactivate = account.status === "disconnected" || account.status === "error";
+      await store.updateDriveAccount(account.id, {
+        ...(reactivate ? { status: "enabled" as const, disabledReason: null } : {}),
+        lastErrorMessage: null,
+        displayName: identity.name ?? account.displayName,
+        accountEmail: identity.email ?? account.accountEmail,
+      });
+    }
 
     // Provision managed folder and verify with a real write/delete.
     let verified = false;
     try {
       const provider = await getDriveProvider(store, config, account.id);
-      const folder = await provider.ensureManagedFolder();
-      await store.updateDriveAccount(account.id, { managedFolderId: folder.id });
-      await provider.testOperation(folder.id);
+      const current = (await store.getDriveAccount(account.id)) ?? account;
+      const folderId = current.managedFolderId ?? (await provider.ensureManagedFolder()).id;
+      if (!current.managedFolderId) await store.updateDriveAccount(account.id, { managedFolderId: folderId });
+      await provider.testOperation(folderId);
       await store.updateDriveAccount(account.id, {
         verified: true,
         lastSuccessAt: Date.now(),
+        lastErrorAt: null,
         lastErrorMessage: null,
       });
       verified = true;
@@ -92,15 +125,24 @@ export const GET = apiRoute(
     await store.appendAudit({
       actorUid: initiatorUid,
       actorEmail: null,
-      action: "drive.connect.complete",
+      action: created ? "drive.connect.complete" : "drive.reconnect.complete",
       targetType: "drive_account",
       targetId: account.id,
       requestId: ctx.requestId,
-      details: { accountEmail: identity.email, verified },
+      details: {
+        accountEmail: identity.email,
+        hasGoogleAccountId: Boolean(identity.sub),
+        verified,
+        duplicateOf: conflicts.length ? conflicts : undefined,
+      },
     });
+    if (conflicts.length) {
+      logger.warn("drive.connect.duplicates_detected", { accountId: account.id, conflicts });
+    }
 
     const email = encodeURIComponent(identity.email ?? account.id);
-    return Response.redirect(`${base}?connected=1&account=${email}&verified=${verified ? 1 : 0}`, 302);
+    const flag = created ? "connected=1" : "reconnected=1";
+    return Response.redirect(`${base}?${flag}&account=${email}&verified=${verified ? 1 : 0}`, 302);
   },
   { auth: "none", config: "required", rateLimit: { limit: 30, windowSec: 60, bucket: "admin-oauth" } }
 );

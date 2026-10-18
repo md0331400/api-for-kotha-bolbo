@@ -2,9 +2,9 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { HardDrive, Plug, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import { AlertTriangle, HardDrive, Plug, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import { useAuth } from "@/lib/admin/auth-context";
-import { api, ApiClientError } from "@/lib/admin/api-client";
+import { api, ApiClientError, describeError, type UiError } from "@/lib/admin/api-client";
 import { formatBytes, formatDate } from "@/lib/format";
 import {
   Badge,
@@ -40,7 +40,15 @@ type DriveAccount = {
   } | null;
   hasManagedFolder: boolean;
   hasStoredCredentials: boolean;
+  hasGoogleAccountId?: boolean;
   disabledReason: string | null;
+};
+
+type DuplicateGroup = {
+  key: string;
+  kind: "googleAccountId" | "email";
+  accountIds: string[];
+  accounts: Array<{ id: string; accountEmail: string | null; status: string; fileCount: number; connectedAt: string }>;
 };
 
 const STATUS_TONE: Record<DriveAccount["status"], "green" | "amber" | "neutral" | "red"> = {
@@ -54,7 +62,9 @@ export default function DriveAccountsPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const [accounts, setAccounts] = useState<DriveAccount[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
+  const [error, setError] = useState<UiError | null>(null);
+  const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -64,10 +74,20 @@ export default function DriveAccountsPage() {
   const load = useCallback(async () => {
     if (!user) return;
     setError(null);
+    setLoading(true);
     try {
       setAccounts(await api.get<DriveAccount[]>(user, "/api/v1/admin/drive-accounts"));
+      // Duplicate report is informational; never block the page on it.
+      try {
+        const dup = await api.get<{ groups: DuplicateGroup[] }>(user, "/api/v1/admin/drive-accounts/duplicates");
+        setDuplicates(dup.groups);
+      } catch {
+        setDuplicates([]);
+      }
     } catch (e) {
-      setError(e instanceof ApiClientError ? e.message : "Failed to load Drive accounts.");
+      setError(describeError(e, "Failed to load Drive accounts."));
+    } finally {
+      setLoading(false);
     }
   }, [user]);
 
@@ -77,14 +97,21 @@ export default function DriveAccountsPage() {
 
   useEffect(() => {
     const connected = searchParams.get("connected");
+    const reconnected = searchParams.get("reconnected");
     const err = searchParams.get("error");
     const account = searchParams.get("account");
     const verified = searchParams.get("verified");
+    const verifyNote =
+      verified === "1"
+        ? "Write test passed."
+        : "Write test did NOT pass — the account is connected but not verified. Run Test before relying on it.";
     if (err) setNotice(`Connection failed: ${err}`);
-    else if (connected === "1") {
+    else if (reconnected === "1") {
       setNotice(
-        `Google Drive account ${account ?? ""} connected. ${verified === "1" ? "Write test passed." : "Write test did NOT pass — the account is connected but not verified. Run Test before relying on it."}`
+        `This Google account (${account ?? ""}) is already connected. Its stored credentials were updated instead of creating a duplicate record. ${verifyNote}`
       );
+    } else if (connected === "1") {
+      setNotice(`Google Drive account ${account ?? ""} connected. ${verifyNote}`);
     }
   }, [searchParams]);
 
@@ -158,8 +185,33 @@ export default function DriveAccountsPage() {
           <InfoBanner message={notice} />
         </div>
       )}
-      {error && <ErrorBanner message={error} />}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error.message} code={error.code} requestId={error.requestId} onRetry={load} retrying={loading} />
+        </div>
+      )}
       {!accounts && !error && <PageLoading label="Loading Drive accounts…" />}
+
+      {duplicates.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4" /> {duplicates.length} duplicate account group{duplicates.length === 1 ? "" : "s"} detected
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            These records point at the same Google account. Nothing is merged or deleted automatically — files and metadata
+            are preserved. New connections for these accounts now update the primary record instead of creating another
+            one. Review and disconnect the redundant records manually once their files have expired or been migrated.
+          </p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {duplicates.map((g) => (
+              <li key={`${g.kind}:${g.key}`}>
+                <span className="font-mono">{g.key}</span> ({g.kind}):{" "}
+                {g.accounts.map((a) => `${a.id} (${a.status}, ${a.fileCount} files)`).join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {accounts && accounts.length === 0 && (
         <Card>

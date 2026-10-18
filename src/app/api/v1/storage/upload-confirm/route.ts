@@ -113,5 +113,5 @@ export const POST = apiRoute(
       uploadId: session.id,
     });
   },
-  { auth: "user", rateLimit: { limit: 60, windowSec: 60, bucket: "upload-confirm" } }
+  { auth: "user", scope: "storage:write", rateLimit: { limit: 60, windowSec: 60, bucket: "upload-confirm" } }
 );

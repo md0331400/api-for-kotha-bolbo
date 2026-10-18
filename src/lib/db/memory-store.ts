@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type {
+  ApiKeyRecord,
   AppVersionRecord,
   AuditLogRecord,
   CleanupRetryRecord,
@@ -52,6 +53,8 @@ export class MemoryStore implements Store {
   uploadsByIdem = new Map<string, string>(); // uid|hash -> uploadId
   driveAccounts = new Map<string, DriveAccountRecord>();
   driveTokens = new Map<string, DriveTokenRecord>();
+  driveIdentities = new Map<string, string>(); // identityKey -> accountId
+  apiKeys = new Map<string, ApiKeyRecord>();
   providerClaims = new Map<string, string>(); // accountId|providerFileId -> fileId
   admins = new Map<string, { email: string | null; grantedAt: number; grantedBy: string | null }>();
   auditLogs: AuditLogRecord[] = [];
@@ -505,12 +508,20 @@ export class MemoryStore implements Store {
     return a ? { ...a } : null;
   }
 
-  async createDriveAccount(input: { accountEmail: string | null; displayName: string | null; scope: string }) {
+  async createDriveAccount(input: {
+    accountEmail: string | null;
+    displayName: string | null;
+    scope: string;
+    id?: string;
+    googleAccountId?: string | null;
+  }) {
     return this.run(() => {
       const now = nowFn();
       const rec: DriveAccountRecord = {
-        id: newRecordId("drv"),
+        id: input.id ?? newRecordId("drv"),
         accountEmail: input.accountEmail,
+        normalizedEmail: input.accountEmail ? input.accountEmail.trim().toLowerCase() : null,
+        googleAccountId: input.googleAccountId ?? null,
         displayName: input.displayName,
         status: "enabled",
         verified: false,
@@ -528,6 +539,19 @@ export class MemoryStore implements Store {
       this.driveAccounts.set(rec.id, rec);
       return { ...rec };
     });
+  }
+
+  async claimDriveIdentity(identityKey: string, accountId: string) {
+    return this.run(() => {
+      const existing = this.driveIdentities.get(identityKey);
+      if (existing) return existing;
+      this.driveIdentities.set(identityKey, accountId);
+      return accountId;
+    });
+  }
+
+  async getDriveIdentityOwner(identityKey: string) {
+    return this.driveIdentities.get(identityKey) ?? null;
   }
 
   async updateDriveAccount(id: string, patch: Partial<DriveAccountRecord>) {
@@ -708,6 +732,37 @@ export class MemoryStore implements Store {
 
   async listNotificationsSentForFile(fileId: string) {
     return [...this.notifSent.values()].filter((n) => n.fileId === fileId).map((n) => ({ ...n }));
+  }
+
+  // ---- client API keys ---------------------------------------------------
+  async createApiKey(rec: ApiKeyRecord) {
+    await this.run(() => {
+      this.apiKeys.set(rec.id, { ...rec, scopes: [...rec.scopes] });
+    });
+  }
+
+  async getApiKey(id: string) {
+    const k = this.apiKeys.get(id);
+    return k ? { ...k, scopes: [...k.scopes] } : null;
+  }
+
+  async listApiKeys() {
+    return [...this.apiKeys.values()]
+      .map((k) => ({ ...k, scopes: [...k.scopes] }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  async updateApiKey(id: string, patch: Partial<ApiKeyRecord>) {
+    return this.run(() => {
+      const k = this.apiKeys.get(id);
+      if (!k) return null;
+      Object.assign(k, patch);
+      return { ...k, scopes: [...k.scopes] };
+    });
+  }
+
+  async deleteApiKey(id: string) {
+    return this.run(() => this.apiKeys.delete(id));
   }
 
   // ---- rate limit --------------------------------------------------------

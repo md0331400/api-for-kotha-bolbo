@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Play, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/admin/auth-context";
-import { api, ApiClientError } from "@/lib/admin/api-client";
+import { api, ApiClientError, describeError, type UiError } from "@/lib/admin/api-client";
 import { formatDate } from "@/lib/format";
 import { Badge, Button, Card, EmptyState, ErrorBanner, PageLoading, Pagination, Table, Toast } from "@/components/admin/ui";
 import { PageHeader } from "@/components/admin/shell";
@@ -50,28 +50,36 @@ export default function LogsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [jobs, setJobs] = useState<JobsResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [logsError, setLogsError] = useState<UiError | null>(null);
+  const [jobsError, setJobsError] = useState<UiError | null>(null);
+  const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Audit logs and cleanup jobs are loaded independently so one failing
+  // request does not blank out the other section.
   const load = useCallback(async () => {
     if (!user) return;
-    setError(null);
-    try {
-      const [logsRes, jobsRes] = await Promise.all([
-        api.get<{ data: AuditLog[]; pagination: { total: number; totalPages: number } }>(
-          user,
-          `/api/v1/admin/audit-logs?page=${page}&pageSize=25`
-        ),
-        api.get<JobsResponse>(user, "/api/v1/admin/jobs/cleanup"),
-      ]);
-      setLogs(logsRes.data);
-      setTotal(logsRes.pagination.total);
-      setTotalPages(logsRes.pagination.totalPages);
-      setJobs(jobsRes);
-    } catch (e) {
-      setError(e instanceof ApiClientError ? e.message : "Failed to load logs.");
+    setLogsError(null);
+    setJobsError(null);
+    setLoading(true);
+    const [logsRes, jobsRes] = await Promise.allSettled([
+      api.getPage<AuditLog>(user, `/api/v1/admin/audit-logs?page=${page}&pageSize=25`),
+      api.get<JobsResponse>(user, "/api/v1/admin/jobs/cleanup"),
+    ]);
+    if (logsRes.status === "fulfilled") {
+      setLogs(logsRes.value.data);
+      setTotal(logsRes.value.pagination.total);
+      setTotalPages(logsRes.value.pagination.totalPages);
+    } else {
+      setLogsError(describeError(logsRes.reason, "Failed to load the audit log."));
     }
+    if (jobsRes.status === "fulfilled") {
+      setJobs(jobsRes.value);
+    } else {
+      setJobsError(describeError(jobsRes.reason, "Failed to load cleanup job status."));
+    }
+    setLoading(false);
   }, [user, page]);
 
   useEffect(() => {
@@ -101,7 +109,7 @@ export default function LogsPage() {
         description="Administrator actions, cleanup runs, and retry state. Secrets, tokens, and file contents are never logged."
         actions={
           <>
-            <Button variant="secondary" size="sm" onClick={load}>
+            <Button variant="secondary" size="sm" onClick={load} loading={loading}>
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </Button>
             <Button size="sm" onClick={runCleanup} loading={busy}>
@@ -111,10 +119,13 @@ export default function LogsPage() {
         }
       />
 
-      {error && <div className="mb-4"><ErrorBanner message={error} /></div>}
-
       <Card className="mb-6" title="Cleanup runs" subtitle={jobs ? `${jobs.pendingRetries} pending retr${jobs.pendingRetries === 1 ? "y" : "ies"} in the queue` : undefined}>
-        {!jobs && !error && <PageLoading label="Loading cleanup runs…" />}
+        {jobsError && (
+          <div className="mb-3">
+            <ErrorBanner message={jobsError.message} code={jobsError.code} requestId={jobsError.requestId} onRetry={load} retrying={loading} />
+          </div>
+        )}
+        {!jobs && !jobsError && <PageLoading label="Loading cleanup runs…" />}
         {jobs && jobs.runs.length === 0 && (
           <EmptyState
             title="No cleanup runs yet."
@@ -155,7 +166,12 @@ export default function LogsPage() {
       </Card>
 
       <Card title="Administrator audit log">
-        {!logs && !error && <PageLoading label="Loading audit log…" />}
+        {logsError && (
+          <div className="mb-3">
+            <ErrorBanner message={logsError.message} code={logsError.code} requestId={logsError.requestId} onRetry={load} retrying={loading} />
+          </div>
+        )}
+        {!logs && !logsError && <PageLoading label="Loading audit log…" />}
         {logs && logs.length === 0 && (
           <EmptyState
             title="No audit entries yet."

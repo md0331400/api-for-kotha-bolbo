@@ -22,7 +22,7 @@ application, deployed at **https://swkf.vercel.app/**.
 | Path | Purpose |
 |---|---|
 | `src/app/api/v1/**` | API route handlers (health, storage, admin, cron) |
-| `src/app/admin/**` | Admin dashboard pages (login, overview, drive, users, files, version, logs) |
+| `src/app/admin/**` | Admin dashboard pages (login, overview, drive, users, files, version, api-keys, logs) |
 | `src/lib/**` | Config, auth, domain store, Drive provider, services (cleanup/notifications) |
 | `tests/unit/**` | Vitest suite (71 tests; fakes for Firebase/Drive — no credentials needed) |
 | `firebase/database.rules.json` | Deny-all client rules + indexes for the Realtime Database |
@@ -54,6 +54,10 @@ npm test               # run the test suite (no credentials required)
 - Identity: Firebase Authentication (Google + email/password). Every protected endpoint verifies
   the ID token server-side and derives the UID from it.
 - Authorization: file ownership on every operation; administrator checks server-side (`admins`).
+- Client API keys (`X-API-Key`, admin-issued, hashed at rest, scoped, bound to one user UID; never
+  valid for admin endpoints) for trusted server-to-server clients — see docs/API.md.
+- Drive pool: one record per Google account (stable `sub` + normalized e-mail, atomic identity
+  claim); reconnecting refreshes credentials instead of duplicating the account.
 - Storage: Google Drive `drive.file` scope in a managed app folder — personal drive content is
   untouchable and is never deleted; provider objects are claimed idempotently.
 - Secrets: Vercel env vars only; refresh tokens encrypted at rest (optional key); no secrets in

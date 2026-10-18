@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 const SAFE_METHODS = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
-const SAFE_HEADERS = "Authorization,Content-Type,X-Idempotency-Key,X-Request-Id";
+const SAFE_HEADERS = "Authorization,Content-Type,X-API-Key,X-Idempotency-Key,X-Request-Id";
 
 function allowedOrigins(): Set<string> {
   const set = new Set<string>();

@@ -118,6 +118,45 @@ export async function fetchGoogleIdentity(accessToken: string): Promise<GoogleId
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return { email: null, name: null, sub: null };
-  const data = (await res.json()) as { email?: string; name?: string; sub?: string };
-  return { email: data.email ?? null, name: data.name ?? null, sub: data.sub ?? null };
+  const data = (await res.json()) as { email?: string; name?: string; sub?: string; email_verified?: boolean };
+  return {
+    // Only trust an email Google reports as verified for identity matching.
+    email: data.email && data.email_verified !== false ? data.email : null,
+    name: data.name ?? null,
+    sub: data.sub ?? null,
+  };
+}
+
+/**
+ * Fallback identity from the ID token returned by the token endpoint. The
+ * token arrived over TLS directly from Google in the same exchange, so the
+ * payload is trustworthy without signature verification (OIDC Core §3.1.3.7.6)
+ * — but it is only used when the UserInfo call did not yield a `sub`, and only
+ * when `iss`/`aud` match this client.
+ */
+export function identityFromIdToken(idToken: string | undefined, clientId: string): GoogleIdentity | null {
+  if (!idToken) return null;
+  const parts = idToken.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as {
+      iss?: string;
+      aud?: string;
+      sub?: string;
+      email?: string;
+      email_verified?: boolean;
+      name?: string;
+      exp?: number;
+    };
+    const issOk = payload.iss === "https://accounts.google.com" || payload.iss === "accounts.google.com";
+    if (!issOk || payload.aud !== clientId) return null;
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+    return {
+      sub: payload.sub ?? null,
+      email: payload.email && payload.email_verified !== false ? payload.email : null,
+      name: payload.name ?? null,
+    };
+  } catch {
+    return null;
+  }
 }

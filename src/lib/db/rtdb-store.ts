@@ -4,6 +4,7 @@ import { requireAdminSdk } from "@/lib/firebase-admin";
 import { ApiError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import type {
+  ApiKeyRecord,
   AppVersionRecord,
   AuditLogRecord,
   CleanupRetryRecord,
@@ -640,11 +641,15 @@ export class RtdbStore implements Store {
     accountEmail: string | null;
     displayName: string | null;
     scope: string;
+    id?: string;
+    googleAccountId?: string | null;
   }): Promise<DriveAccountRecord> {
     const now = Date.now();
     const rec: DriveAccountRecord = {
-      id: newRecordId("drv"),
+      id: input.id ?? newRecordId("drv"),
       accountEmail: input.accountEmail,
+      normalizedEmail: input.accountEmail ? input.accountEmail.trim().toLowerCase() : null,
+      googleAccountId: input.googleAccountId ?? null,
       displayName: input.displayName,
       status: "enabled",
       verified: false,
@@ -659,8 +664,18 @@ export class RtdbStore implements Store {
       managedFolderId: null,
       disabledReason: null,
     };
-    await this.set(`driveAccounts/${rec.id}`, rec);
+    await this.set(`driveAccounts/${safeKey(rec.id)}`, rec);
     return rec;
+  }
+
+  async claimDriveIdentity(identityKey: string, accountId: string): Promise<string> {
+    const path = `driveIdentities/${safeKey(identityKey)}`;
+    const res = await this.tx<string>(path, (current) => current ?? accountId);
+    return res.value ?? accountId;
+  }
+
+  async getDriveIdentityOwner(identityKey: string): Promise<string | null> {
+    return this.val<string>(`driveIdentities/${safeKey(identityKey)}`);
   }
 
   async updateDriveAccount(
@@ -820,6 +835,38 @@ export class RtdbStore implements Store {
   async listNotificationsSentForFile(fileId: string): Promise<NotificationSentRecord[]> {
     const all = (await this.val<Record<string, NotificationSentRecord>>("notifSent")) ?? {};
     return Object.values(all).filter((n) => n.fileId === fileId);
+  }
+
+  // ---- client API keys ---------------------------------------------------
+  async createApiKey(rec: ApiKeyRecord): Promise<void> {
+    await this.set(`apiKeys/${safeKey(rec.id)}`, rec);
+  }
+
+  async getApiKey(id: string): Promise<ApiKeyRecord | null> {
+    const rec = await this.val<ApiKeyRecord>(`apiKeys/${safeKey(id)}`);
+    return rec ? { ...rec, scopes: rec.scopes ?? [] } : null;
+  }
+
+  async listApiKeys(): Promise<ApiKeyRecord[]> {
+    const all = (await this.val<Record<string, ApiKeyRecord>>("apiKeys")) ?? {};
+    return Object.values(all)
+      .map((k) => ({ ...k, scopes: k.scopes ?? [] }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  async updateApiKey(id: string, patch: Partial<ApiKeyRecord>): Promise<ApiKeyRecord | null> {
+    const res = await this.tx<ApiKeyRecord>(`apiKeys/${safeKey(id)}`, (current) => {
+      if (!current) return undefined;
+      return { ...current, ...patch };
+    });
+    return res.committed ? res.value : this.getApiKey(id);
+  }
+
+  async deleteApiKey(id: string): Promise<boolean> {
+    const existing = await this.getApiKey(id);
+    if (!existing) return false;
+    await this.set(`apiKeys/${safeKey(id)}`, null);
+    return true;
   }
 
   // ---- rate limiting -----------------------------------------------------
