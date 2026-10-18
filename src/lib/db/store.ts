@@ -211,7 +211,7 @@ export interface Store {
 
   // ---- client API keys ---------------------------------------------------
   createApiKey(rec: ApiKeyRecord): Promise<void>;
-  
+
   getApp(id: string): Promise<AppRecord | null>;
   listApps(): Promise<AppRecord[]>;
   createApp(app: AppRecord): Promise<void>;

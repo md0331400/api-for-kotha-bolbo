@@ -259,7 +259,7 @@ export default function ApiKeysPage() {
                 invalid={Boolean(fieldErrors.name)}
               />
             </Field>
-            
+
             <Field label="Associated Application" htmlFor="appId" hint="Required for application-scoped endpoints (e.g. storage uploads).">
               <NativeSelect id="appId" value={appId} onChange={(e) => setAppId(e.target.value)}>
                 <option value="">-- None --</option>

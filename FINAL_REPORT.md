@@ -19,7 +19,7 @@
 **Fix**: Passed `applyLocally = false` to `this.ref.transaction` so it actually fetches the server-side value prior to invoking the update function, preventing the optimistic null-abort. Clicking Disable/Disconnect now immediately applies and reflects on the UI.
 
 ### Part 6: Storage Capacity & Aggregate Usage
-**Implementation**: Upgraded the `Drive Accounts` dashboard UI. 
+**Implementation**: Upgraded the `Drive Accounts` dashboard UI.
 1. Replaced the single sentence placeholder with a responsive grid displaying **Google Storage**, **Free Space**, **Usage %**, and **Managed Usage** cleanly separating Google storage from application files.
 2. Added an aggregate **Storage Pool Summary** banner iterating the collection to show pooled metrics (Total Managed Files & Total Managed Bytes).
 
@@ -30,4 +30,3 @@
 Added runtime safety handling around `\n` encoded Firebase Private keys preventing fatal `503 CONFIG_MISSING` / `SIGBUS` Vercel initialization crashes.
 All `113` Unit tests strictly pass locally without failures.
 Typescript compiler strictly passes (except one irrelevant missing global type for `firebase/auth`).
-

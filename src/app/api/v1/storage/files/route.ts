@@ -12,7 +12,7 @@ import { pageMeta } from "@/lib/format";
 export const GET = apiRoute(
   async (ctx) => {
         const user = await ensureUser(ctx);
-    
+
     const q = parseOrThrow(fileListQuerySchema, Object.fromEntries(ctx.req.nextUrl.searchParams));
     const offset = (q.page - 1) * q.pageSize;
     const result = await ctx.store!.listFiles(

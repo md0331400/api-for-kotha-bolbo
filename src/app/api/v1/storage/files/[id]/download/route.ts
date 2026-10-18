@@ -31,7 +31,7 @@ export const GET = apiRoute(
     if (!auth.appId && !auth.isAdmin && file.appId) {
       throw new ApiError("FORBIDDEN", "An application identity (X-API-Key) is required to access this file.");
     }
-    
+
     if (file.status === "deleted") {
       throw new ApiError("NOT_FOUND", "File has been deleted.");
     }

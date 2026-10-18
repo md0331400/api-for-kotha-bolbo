@@ -114,10 +114,10 @@ export class GoogleDriveProvider implements StorageProvider {
       method: "POST",
       context: "drive.folder.create",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        name, 
+      body: JSON.stringify({
+        name,
         mimeType: FOLDER_MIME,
-        parents: parentId ? [parentId] : undefined 
+        parents: parentId ? [parentId] : undefined
       }),
     });
     const created = (await createRes.json()) as { id: string };

@@ -40,13 +40,13 @@ export const PATCH = apiRoute(async (ctx) => {
 export const DELETE = apiRoute(async (ctx) => {
   const store = ctx.store!;
   const id = ctx.params.id;
-  
+
   // Refuse if we have API keys tied to it (for safety)
   const keys = await store.listApiKeys();
   if (keys.some((k) => k.appId === id)) {
     throw new ApiError("CONFLICT", "Cannot delete application: it has associated API keys.");
   }
-  
+
   await store.deleteApp(id);
   return dataResponse({ id, deleted: true });
 }, { auth: "admin" });

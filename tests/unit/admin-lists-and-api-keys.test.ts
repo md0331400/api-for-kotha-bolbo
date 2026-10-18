@@ -359,18 +359,18 @@ describe("client authentication with API keys", () => {
     expect(body.error.details.requiredScope).toBe("storage:write");
   });
 
-  
+
   it("supports backward-compatible API key rotation without invalidating old keys", async () => {
     // 1. Generate Old Key
     const oldKey = await mint(["storage:read"]);
-    
+
     // 2. Both old and new work
     let res = await quotaGet(req("/api/v1/storage/quota", { apiKey: oldKey }));
     expect(res.status).toBe(200);
 
     // 3. Generate New Key (Rotation)
     const newKey = await mint(["storage:read"]);
-    
+
     // 4. Prove both work side-by-side
     res = await quotaGet(req("/api/v1/storage/quota", { apiKey: oldKey }));
     expect(res.status).toBe(200);
@@ -400,7 +400,7 @@ describe("client authentication with API keys", () => {
     // 8. Old key is dead, New key still works
     res = await quotaGet(req("/api/v1/storage/quota", { apiKey: oldKey }));
     expect(res.status).toBe(401);
-    
+
     res = await quotaGet(req("/api/v1/storage/quota", { apiKey: newKey }));
     expect(res.status).toBe(200);
 

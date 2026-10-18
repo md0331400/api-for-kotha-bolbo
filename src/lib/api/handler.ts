@@ -144,7 +144,7 @@ async function resolveApiKeyAuth(
   if (mode === "admin") {
     throw new ApiError("FORBIDDEN", "Administrator endpoints require a Firebase ID token; API keys are not accepted.");
   }
-  
+
   const { record } = await verifyApiKey(store, rawKey);
   if (record.appId) {
     const app = await store.getApp(record.appId);
@@ -184,7 +184,7 @@ async function resolveAuth(
   if (mode === "none") return null;
   const hasBearer = (req.headers.get("authorization") ?? "").toLowerCase().startsWith("bearer ");
   const apiKeyHeader = req.headers.get(API_KEY_HEADER);
-  
+
   let apiKeyAuth: AuthContext | null = null;
   if (apiKeyHeader && apiKeyHeader.trim()) {
     apiKeyAuth = await resolveApiKeyAuth(apiKeyHeader, store, mode, requiredScope);
@@ -220,7 +220,7 @@ async function resolveAuth(
   if (mode === "admin" && !isAdmin) {
     throw new ApiError("FORBIDDEN", "Administrator privileges are required for this endpoint.");
   }
-  
+
   return {
     uid,
     email,
