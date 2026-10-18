@@ -111,6 +111,8 @@ export async function recordAccountSuccess(store: Store, accountId: string): Pro
     .catch(() => undefined);
 }
 
+const folderLocks = new Map<string, Promise<string>>();
+
 export async function recordAccountError(store: Store, accountId: string, message: string): Promise<void> {
   const now = Date.now();
   await store
@@ -127,10 +129,53 @@ export async function recordAccountError(store: Store, accountId: string, messag
  * Pick an account and create a resumable session for a new object, failing over
  * across eligible accounts on provider errors.
  */
+
+async function resolveDrivePath(
+  store: Store,
+  provider: any,
+  accountId: string,
+  managedFolderId: string,
+  appId: string,
+  uid: string,
+  category: string
+): Promise<string> {
+  const ensure = async (name: string, parentId: string, key: string): Promise<string> => {
+    const lockKey = `${accountId}:${key}`;
+    if (folderLocks.has(lockKey)) {
+      return folderLocks.get(lockKey)!;
+    }
+    const p = (async () => {
+      let fId = await store.getDriveFolder(accountId, key);
+      if (!fId) {
+        const res = await provider.ensureFolder(name, parentId);
+        fId = await store.setDriveFolder(accountId, key, res.id);
+        if (fId !== res.id) {
+          // We lost the race to another instance, clean up our duplicate folder
+          provider.deleteFile(res.id).catch(() => {});
+        }
+      }
+      return fId;
+    })();
+    folderLocks.set(lockKey, p);
+    try {
+      return await p;
+    } finally {
+      folderLocks.delete(lockKey);
+    }
+  };
+
+  const appsId = await ensure("Applications", managedFolderId, "sys_Applications");
+  const appIdFolder = await ensure(appId, appsId, `app_${appId}`);
+  const usersId = await ensure("Users", appIdFolder, `app_${appId}_Users`);
+  const uidId = await ensure(uid, usersId, `app_${appId}_usr_${uid}`);
+  const catId = await ensure(category, uidId, `app_${appId}_usr_${uid}_cat_${category}`);
+  return catId;
+}
+
 export async function createResumableOnPool(
   store: Store,
   config: AppConfig,
-  input: { name: string; mimeType: string; sizeBytes: number }
+  input: { name: string; mimeType: string; sizeBytes: number; appId: string; uid: string; category: string }
 ): Promise<{ accountId: string; managedFolderId: string; uploadUrl: string; expiresAt: number; headers: Record<string, string> }> {
   const eligible = await selectEligibleAccounts(store);
   if (!eligible.length) {
@@ -149,11 +194,12 @@ export async function createResumableOnPool(
         managedFolderId = folder.id;
         await store.updateDriveAccount(account.id, { managedFolderId });
       }
+      const targetFolderId = await resolveDrivePath(store, provider, account.id, managedFolderId, input.appId, input.uid, input.category);
       const session = await provider.createResumableUpload({
         name: input.name,
         mimeType: input.mimeType,
         sizeBytes: input.sizeBytes,
-        parentId: managedFolderId,
+        parentId: targetFolderId,
       });
       return {
         accountId: account.id,

@@ -95,8 +95,13 @@ export class GoogleDriveProvider implements StorageProvider {
   }
 
   async ensureManagedFolder(): Promise<{ id: string }> {
+    return this.ensureFolder(MANAGED_FOLDER_NAME);
+  }
+
+  async ensureFolder(name: string, parentId?: string): Promise<{ id: string }> {
+    const parentQuery = parentId ? ` and '${parentId}' in parents` : "";
     const q = encodeURIComponent(
-      `name='${MANAGED_FOLDER_NAME}' and mimeType='${FOLDER_MIME}' and trashed=false`
+      `name='${name.replace(/'/g, "\'")}' and mimeType='${FOLDER_MIME}' and trashed=false` + parentQuery
     );
     const res = await this.driveFetch(`/files?q=${q}&fields=files(id,name)&pageSize=1`, {
       context: "drive.folder.list",
@@ -109,11 +114,16 @@ export class GoogleDriveProvider implements StorageProvider {
       method: "POST",
       context: "drive.folder.create",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: MANAGED_FOLDER_NAME, mimeType: FOLDER_MIME }),
+      body: JSON.stringify({ 
+        name, 
+        mimeType: FOLDER_MIME,
+        parents: parentId ? [parentId] : undefined 
+      }),
     });
     const created = (await createRes.json()) as { id: string };
     return { id: created.id };
   }
+
 
   async createResumableUpload(input: {
     name: string;

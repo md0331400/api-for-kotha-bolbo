@@ -1,4 +1,5 @@
 import { apiRoute, paginatedResponse, ensureUser } from "@/lib/api/handler";
+import { ApiError } from "@/lib/errors";
 import { parseOrThrow, fileListQuerySchema } from "@/lib/validation";
 import { toPublicFile } from "@/lib/db/types";
 import { pageMeta } from "@/lib/format";
@@ -10,12 +11,14 @@ import { pageMeta } from "@/lib/format";
  */
 export const GET = apiRoute(
   async (ctx) => {
-    const user = await ensureUser(ctx);
+        const user = await ensureUser(ctx);
+    
     const q = parseOrThrow(fileListQuerySchema, Object.fromEntries(ctx.req.nextUrl.searchParams));
     const offset = (q.page - 1) * q.pageSize;
     const result = await ctx.store!.listFiles(
       {
         uid: user.uid,
+        appId: ctx.auth!.appId || null, // null forces filtering to legacy files only for bare firebase tokens
         category: q.category,
         status: q.status ?? "confirmed",
         expiringInDays: q.expiringInDays,

@@ -28,6 +28,7 @@ type ApiKey = {
   name: string;
   maskedKey: string;
   subjectUid: string;
+  appId?: string | null;
   scopes: string[];
   status: "active" | "revoked";
   createdAt: string;
@@ -68,12 +69,14 @@ export default function ApiKeysPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<UiError | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [apps, setApps] = useState<{id:string;name:string}[]>([]);
+  const [appId, setAppId] = useState("");
 
   // one-time reveal
   const [revealed, setRevealed] = useState<{ rawKey: string; key: ApiKey } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const [confirm, setConfirm] = useState<{ key: ApiKey; kind: "revoke" | "delete" } | null>(null);
+  const [confirm, setConfirm] = useState<{ key: ApiKey; kind: "revoke" | "delete" | "expire" } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -106,6 +109,7 @@ export default function ApiKeysPage() {
       const res = await api.post<{ key: ApiKey; rawKey: string }>(user, "/api/v1/admin/api-keys", {
         name: name.trim(),
         subjectUid: subjectUid.trim(),
+        appId: appId || null,
         scopes,
         expiresInDays: expiresInDays ? Number(expiresInDays) : null,
       });
@@ -140,6 +144,20 @@ export default function ApiKeysPage() {
       setTimeout(() => setCopied(false), 2500);
     } catch {
       setToast({ message: "Clipboard unavailable — select the key text and copy it manually.", tone: "error" });
+    }
+  };
+
+  const setExpiry = async (key: ApiKey) => {
+    setBusyId(key.id);
+    try {
+      await api.patch(user!, `/api/v1/admin/api-keys/${encodeURIComponent(key.id)}`, { action: "set_expiry", expiresInDays: 7 });
+      setToast({ message: `Key "${key.name}" will expire in 7 days.`, tone: "success" });
+      await load();
+    } catch (e) {
+      setToast({ message: describeError(e, "Set expiry failed.").message, tone: "error" });
+    } finally {
+      setBusyId(null);
+      setConfirm(null);
     }
   };
 
@@ -241,6 +259,13 @@ export default function ApiKeysPage() {
                 invalid={Boolean(fieldErrors.name)}
               />
             </Field>
+            
+            <Field label="Associated Application" htmlFor="appId" hint="Required for application-scoped endpoints (e.g. storage uploads).">
+              <NativeSelect id="appId" value={appId} onChange={(e) => setAppId(e.target.value)}>
+                <option value="">-- None --</option>
+                {apps.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </NativeSelect>
+            </Field>
             <Field
               label="Subject user UID"
               htmlFor="subjectUid"
@@ -311,6 +336,9 @@ export default function ApiKeysPage() {
                   <td className="max-w-[140px] truncate px-3 py-2.5 font-mono text-xs text-slate-600" title={k.subjectUid}>
                     {k.subjectUid}
                   </td>
+                  <td className="px-3 py-2.5 text-xs text-slate-600">
+                    {k.appId || "—"}
+                  </td>
                   <td className="px-3 py-2.5">
                     <div className="flex max-w-[200px] flex-wrap gap-1">
                       {k.scopes.map((s) => (
@@ -328,11 +356,16 @@ export default function ApiKeysPage() {
                   <td className="px-3 py-2.5">
                     {k.status === "active" ? <Badge tone="green">active</Badge> : <Badge tone="red">revoked</Badge>}
                   </td>
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="px-3 py-2.5 text-right flex justify-end gap-2">
                     {k.status === "active" ? (
-                      <Button variant="secondary" size="sm" onClick={() => setConfirm({ key: k, kind: "revoke" })} loading={busyId === k.id}>
-                        Revoke
-                      </Button>
+                      <>
+                        <Button variant="secondary" size="sm" onClick={() => setConfirm({ key: k, kind: "expire" })} loading={busyId === k.id}>
+                          Set Expiry (7d)
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => setConfirm({ key: k, kind: "revoke" })} loading={busyId === k.id}>
+                          Revoke
+                        </Button>
+                      </>
                     ) : (
                       <Button variant="ghost" size="sm" onClick={() => setConfirm({ key: k, kind: "delete" })} loading={busyId === k.id} aria-label={`Delete ${k.name}`}>
                         <Trash2 className="h-3.5 w-3.5 text-rose-500" />
@@ -363,12 +396,16 @@ export default function ApiKeysPage() {
 
       <ConfirmDialog
         open={Boolean(confirm)}
-        title={confirm?.kind === "revoke" ? "Revoke API key?" : "Delete key metadata?"}
+        title={confirm?.kind === "revoke" ? "Revoke API key?" : confirm?.kind === "expire" ? "Set Expiry" : "Delete key metadata?"}
         message={
           confirm?.kind === "revoke" ? (
             <>
               Requests using <strong>{confirm?.key.name}</strong> ({confirm?.key.maskedKey}) will be rejected immediately.
               This cannot be undone — create a new key to restore access.
+            </>
+          ) : confirm?.kind === "expire" ? (
+            <>
+              Set <strong>{confirm?.key.name}</strong> to expire in 7 days? This allows a grace period for rotation.
             </>
           ) : (
             <>
@@ -377,7 +414,7 @@ export default function ApiKeysPage() {
             </>
           )
         }
-        confirmLabel={confirm?.kind === "revoke" ? "Revoke" : "Delete"}
+        confirmLabel={confirm?.kind === "revoke" ? "Revoke" : confirm?.kind === "expire" ? "Set Expiry" : "Delete"}
         danger
         typedConfirmation={confirm?.kind === "revoke" ? "REVOKE" : undefined}
         busy={Boolean(busyId)}
@@ -385,6 +422,7 @@ export default function ApiKeysPage() {
         onConfirm={() => {
           if (!confirm) return;
           if (confirm.kind === "revoke") revoke(confirm.key);
+          else if (confirm.kind === "expire") setExpiry(confirm.key);
           else remove(confirm.key);
         }}
       />

@@ -25,6 +25,13 @@ export const GET = apiRoute(
     if (file.uid !== auth.uid && !auth.isAdmin) {
       throw new ApiError("FORBIDDEN", "This file belongs to another user.");
     }
+    if (auth.appId && file.appId !== auth.appId && !auth.isAdmin) {
+      throw new ApiError("FORBIDDEN", "This file belongs to another application.");
+    }
+    if (!auth.appId && !auth.isAdmin && file.appId) {
+      throw new ApiError("FORBIDDEN", "An application identity (X-API-Key) is required to access this file.");
+    }
+    
     if (file.status === "deleted") {
       throw new ApiError("NOT_FOUND", "File has been deleted.");
     }

@@ -46,6 +46,7 @@ export interface StorageProvider {
 
   /** Ensure the managed folder that owns every object created by this app. */
   ensureManagedFolder(): Promise<{ id: string }>;
+  ensureFolder(name: string, parentId?: string): Promise<{ id: string }>;
 
   createResumableUpload(input: {
     name: string;

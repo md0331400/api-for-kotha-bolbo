@@ -22,6 +22,7 @@ const createSchema = z
       .max(API_KEY_SCOPES.length)
       .transform((arr) => Array.from(new Set(arr)) as ApiKeyScope[]),
     expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
+    appId: z.string().max(128).nullable().optional(),
   })
   .strict();
 
@@ -80,6 +81,11 @@ export const POST = apiRoute(
     const store = ctx.store!;
     const body = parseOrThrow(createSchema, await readJson(ctx.req));
 
+    if (body.appId) {
+      const app = await store.getApp(body.appId);
+      if (!app) throw new ApiError("VALIDATION_FAILED", "Application not found", { details: { issues: [{ path: "appId", message: "invalid app id" }] } });
+      if (app.status !== "enabled") throw new ApiError("VALIDATION_FAILED", "Application is disabled", { details: { issues: [{ path: "appId", message: "app disabled" }] } });
+    }
     const existingUser = await store.getUser(body.subjectUid);
     await assertSubjectExists(body.subjectUid, Boolean(existingUser));
 
@@ -90,6 +96,7 @@ export const POST = apiRoute(
       name: body.name,
       subjectUid: body.subjectUid,
       scopes: body.scopes,
+      appId: body.appId || null,
       secretHash: generated.secretHash,
       prefix: generated.prefix,
       status: "active",

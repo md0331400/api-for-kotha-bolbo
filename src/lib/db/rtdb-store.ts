@@ -9,6 +9,7 @@ import type {
   AuditLogRecord,
   CleanupRetryRecord,
   CleanupRunRecord,
+  AppRecord,
   DriveAccountRecord,
   DriveTokenRecord,
   FileRecord,
@@ -252,6 +253,7 @@ export class RtdbStore implements Store {
       reservedBytes: input.expectedBytes,
       status: "reserved",
       idempotencyKey: input.idempotencyKey,
+      appId: input.appId || null,
       providerAccountId: null,
       providerSessionUrl: null,
       providerFileId: null,
@@ -401,6 +403,7 @@ export class RtdbStore implements Store {
       createdAt: now,
       expiresAt: now + input.ttlDays * 86_400_000,
       providerAccountId: s.providerAccountId,
+      appId: s.appId || null,
       providerFileId: input.providerFileId,
       status: "confirmed",
       uploadId: s.id,
@@ -540,6 +543,7 @@ export class RtdbStore implements Store {
     const all = (await this.val<Record<string, FileRecord>>(sourcePath)) ?? {};
     let items = Object.values(all);
     if (filters.uid) items = items.filter((f) => f.uid === filters.uid);
+    if (filters.appId !== undefined) items = items.filter((f) => f.appId === filters.appId || (filters.appId === null && !f.appId));
     if (filters.category) items = items.filter((f) => f.category === filters.category);
     if (filters.status) items = items.filter((f) => f.status === filters.status);
     if (filters.createdAfter !== undefined) items = items.filter((f) => f.createdAt >= filters.createdAfter!);
@@ -845,6 +849,37 @@ export class RtdbStore implements Store {
   async getApiKey(id: string): Promise<ApiKeyRecord | null> {
     const rec = await this.val<ApiKeyRecord>(`apiKeys/${safeKey(id)}`);
     return rec ? { ...rec, scopes: rec.scopes ?? [] } : null;
+  }
+
+  async getDriveFolder(accountId: string, pathKey: string): Promise<string | null> {
+    return this.val<string>(`driveFolders/${safeKey(accountId)}/${safeKey(pathKey)}`);
+  }
+  async setDriveFolder(accountId: string, pathKey: string, folderId: string): Promise<string> {
+    const res = await this.tx<string>(`driveFolders/${safeKey(accountId)}/${safeKey(pathKey)}`, (current) => {
+      if (current) return undefined;
+      return folderId;
+    });
+    return res.value || folderId;
+  }
+  async getApp(id: string): Promise<AppRecord | null> {
+    return this.val<AppRecord>(`appConfig/apps/${safeKey(id)}`);
+  }
+  async listApps(): Promise<AppRecord[]> {
+    const all = (await this.val<Record<string, AppRecord>>("appConfig/apps")) ?? {};
+    return Object.values(all);
+  }
+  async createApp(app: AppRecord): Promise<void> {
+    await this.set(`appConfig/apps/${safeKey(app.id)}`, app);
+  }
+  async updateApp(id: string, updates: Partial<AppRecord>): Promise<AppRecord | null> {
+    const res = await this.tx<AppRecord | null>(`appConfig/apps/${safeKey(id)}`, (current) => {
+      if (!current) return undefined;
+      return { ...current, ...updates };
+    });
+    return res.value;
+  }
+  async deleteApp(id: string): Promise<void> {
+    await this.set(`appConfig/apps/${safeKey(id)}`, null);
   }
 
   async listApiKeys(): Promise<ApiKeyRecord[]> {
