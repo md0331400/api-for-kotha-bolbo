@@ -6,3 +6,24 @@
 
 # Generated diagnostic kernel/config artifacts are local-only and not releasable ZIPs.
 /build-artifacts/
+
+# --- Kotha Bolbo Storage API (Next.js) ---
+node_modules/
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment files: never commit real credentials. Placeholders live in .env.example.
+.env
+.env.*
+!.env.example
+
+# Logs and OS noise
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.DS_Store
+.vercel
