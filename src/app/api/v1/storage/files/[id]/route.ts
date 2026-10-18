@@ -16,6 +16,12 @@ export const GET = apiRoute(
     if (file.uid !== auth.uid && !auth.isAdmin) {
       throw new ApiError("FORBIDDEN", "This file belongs to another user.");
     }
+    if (auth.appId && file.appId !== auth.appId && !auth.isAdmin) {
+      throw new ApiError("FORBIDDEN", "This file belongs to another application.");
+    }
+    if (!auth.appId && !auth.isAdmin && file.appId) {
+      throw new ApiError("FORBIDDEN", "An application identity (X-API-Key) is required to access this file.");
+    }
     return dataResponse(toPublicFile(file));
   },
   { auth: "user", scope: "storage:read", rateLimit: { limit: 120, windowSec: 60, bucket: "file-meta" } }
@@ -35,6 +41,12 @@ export const DELETE = apiRoute(
     if (!file) throw new ApiError("NOT_FOUND", "File not found.");
     if (file.uid !== auth.uid && !auth.isAdmin) {
       throw new ApiError("FORBIDDEN", "This file belongs to another user.");
+    }
+    if (auth.appId && file.appId !== auth.appId && !auth.isAdmin) {
+      throw new ApiError("FORBIDDEN", "This file belongs to another application.");
+    }
+    if (!auth.appId && !auth.isAdmin && file.appId) {
+      throw new ApiError("FORBIDDEN", "An application identity (X-API-Key) is required to access this file.");
     }
     if (file.status === "deleted") {
       return dataResponse({ id: file.id, status: "deleted", alreadyDeleted: true });

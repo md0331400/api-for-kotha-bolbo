@@ -100,12 +100,16 @@ beforeAll(() => {
   process.env.CRON_SECRET = "cron-secret-value-1234567890";
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   store = new MemoryStore();
   setStore(store);
   fakeProvider.objects.clear();
   fakeProvider.deletedIds = [];
   fakeProvider.failNext = null;
+  // setup app and api key for tests
+  await store.setDriveFolder("drv_test", "sys_Applications", "folder_apps");
+  await store.createApp({ id: "app_test", name: "Test App", packageName: "com.test.app", status: "enabled", createdAt: Date.now() });
+  await store.createApiKey({ id: "ak_test", appId: "app_test", name: "test", subjectUid: "user-1", scopes: ["storage:write", "storage:read"], secretHash: "test", prefix: "kb_test", status: "active", createdAt: Date.now(), createdBy: "admin", createdByEmail: null, lastUsedAt: null, revokedAt: null, revokedBy: null, expiresAt: null });
 });
 
 // ---- tests ------------------------------------------------------------------

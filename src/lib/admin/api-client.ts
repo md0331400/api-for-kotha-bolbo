@@ -131,8 +131,8 @@ export type UiError = { message: string; code?: string; requestId?: string; stat
  * Turn any thrown value into a message the dashboard can show. Server
  * messages are preferred; infrastructure failures get specific guidance.
  */
-export function describeError(e: unknown, fallback: string): UiError {
-  if (e instanceof ApiClientError) {
+export function describeError(e: any, fallback: string): UiError {
+  if (e instanceof ApiClientError || (e && typeof e === "object" && e.name === "ApiClientError")) {
     let message = e.message;
     if (e.status === 401) message = `${e.message} Sign in again if this persists.`;
     else if (e.status === 403) message = `${e.message} (administrator privileges are checked on the server)`;
@@ -142,6 +142,8 @@ export function describeError(e: unknown, fallback: string): UiError {
     } else if (e.status === 429) message = `${e.message} (rate limited)`;
     return { message, code: e.code, requestId: e.requestId, status: e.status };
   }
-  if (e instanceof Error) return { message: `${fallback} ${e.message}`.trim() };
+  if (e instanceof Error || (e && typeof e === "object" && typeof e.message === "string")) {
+    return { message: `${fallback} ${e.message}`.trim() };
+  }
   return { message: fallback };
 }

@@ -228,6 +228,27 @@ export default function DriveAccountsPage() {
       )}
 
       {accounts && accounts.length > 0 && (
+        <Card className="mb-4 bg-brand-50">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-brand-900">Storage Pool Summary</h3>
+              <p className="text-xs text-brand-700">Total application-managed storage across {accounts.length} account{accounts.length === 1 ? "" : "s"}</p>
+            </div>
+            <div className="flex items-center gap-6">
+              <div>
+                <p className="text-xs text-brand-700">Managed Files</p>
+                <p className="text-lg font-semibold text-brand-900">{accounts.reduce((sum, a) => sum + a.fileCount, 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-brand-700">Managed Storage</p>
+                <p className="text-lg font-semibold text-brand-900">{formatBytes(accounts.reduce((sum, a) => sum + a.totalBytes, 0))}</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {accounts && accounts.length > 0 && (
         <div className="space-y-4">
           {accounts.map((a) => (
             <Card key={a.id}>
@@ -261,14 +282,39 @@ export default function DriveAccountsPage() {
                     {a.disabledReason && a.status === "disabled" && (
                       <p className="mt-1 text-xs text-amber-600">Disabled: {a.disabledReason}</p>
                     )}
-                    {a.quotaInfo && (a.quotaInfo.limitBytes !== null || a.quotaInfo.usageBytes !== null) && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Provider capacity: {formatBytes(a.quotaInfo.usageBytes)} used
-                        {a.quotaInfo.limitBytes !== null ? ` of ${formatBytes(a.quotaInfo.limitBytes)}` : ""} (reported{" "}
-                        {formatDate(a.quotaInfo.fetchedAt)})
-                      </p>
+                    {a.quotaInfo ? (
+                      <div className="mt-2 rounded bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <div>
+                            <span className="block font-medium text-slate-700">Google Storage</span>
+                            {a.quotaInfo.usageBytes !== null ? formatBytes(a.quotaInfo.usageBytes) : "Unknown"} /{" "}
+                            {a.quotaInfo.limitBytes !== null ? formatBytes(a.quotaInfo.limitBytes) : "Unlimited"}
+                          </div>
+                          <div>
+                            <span className="block font-medium text-slate-700">Free Space</span>
+                            {a.quotaInfo.limitBytes !== null && a.quotaInfo.usageBytes !== null
+                              ? formatBytes(Math.max(0, a.quotaInfo.limitBytes - a.quotaInfo.usageBytes))
+                              : "Unknown"}
+                          </div>
+                          <div>
+                            <span className="block font-medium text-slate-700">Usage %</span>
+                            {a.quotaInfo.limitBytes !== null && a.quotaInfo.limitBytes > 0 && a.quotaInfo.usageBytes !== null
+                              ? ((a.quotaInfo.usageBytes / a.quotaInfo.limitBytes) * 100).toFixed(1) + "%"
+                              : "N/A"}
+                          </div>
+                          <div>
+                            <span className="block font-medium text-slate-700">Managed Usage</span>
+                            {formatBytes(a.totalBytes)} ({a.fileCount} files)
+                          </div>
+                        </div>
+                        <p className="mt-1 text-[10px] text-slate-400">Data fresh as of {formatDate(a.quotaInfo.fetchedAt)}</p>
+                      </div>
+                    ) : (
+                      <div className="mt-2 rounded bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                        <p>Google Storage: Not available.</p>
+                        <p>Managed Usage: {formatBytes(a.totalBytes)} ({a.fileCount} files)</p>
+                      </div>
                     )}
-                    {!a.quotaInfo && <p className="mt-1 text-xs text-slate-400">Provider capacity: not reported</p>}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

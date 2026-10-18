@@ -34,6 +34,12 @@ export const POST = apiRoute(
     if (session.uid !== user.uid) {
       throw new ApiError("FORBIDDEN", "Upload session belongs to another user.");
     }
+    if (ctx.auth!.appId && session.appId && session.appId !== ctx.auth!.appId) {
+      throw new ApiError("FORBIDDEN", "This upload belongs to another application.");
+    }
+    if (!ctx.auth!.appId && session.appId) {
+      throw new ApiError("FORBIDDEN", "An application identity (X-API-Key) is required.");
+    }
 
     if (session.status === "confirmed" && session.fileId) {
       const existing = await store.getFile(session.fileId);

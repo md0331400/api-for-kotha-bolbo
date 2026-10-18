@@ -37,6 +37,7 @@ export interface UserRecord {
 export interface FileRecord {
   id: string;
   uid: string;
+  appId: string | null;
   category: FileCategory;
   /** Validated display filename. */
   name: string;
@@ -60,6 +61,7 @@ export interface FileRecord {
 export interface UploadSession {
   id: string;
   uid: string;
+  appId: string | null;
   category: FileCategory;
   name: string;
   mimeType: string;
@@ -119,6 +121,14 @@ export interface DriveAccountRecord {
   normalizedEmail?: string | null;
 }
 
+export interface AppRecord {
+  id: string;
+  name: string;
+  packageName: string;
+  status: "enabled" | "disabled";
+  createdAt: number;
+}
+
 export interface DriveTokenRecord {
   accountId: string;
   /** Refresh token — stored server-side only, optionally AES-GCM encrypted. */
@@ -144,6 +154,7 @@ export type ApiKeyStatus = "active" | "revoked";
  * raw key is shown once at creation and can never be recovered.
  */
 export interface ApiKeyRecord {
+  appId: string | null;
   /** Public identifier embedded in the key (`ak_…`). */
   id: string;
   name: string;
@@ -247,8 +258,8 @@ export function toPublicFile(f: FileRecord, now = Date.now()): PublicFile {
     name: f.name,
     mimeType: f.mimeType,
     sizeBytes: f.sizeBytes,
-    createdAt: new Date(f.createdAt).toISOString(),
-    expiresAt: new Date(f.expiresAt).toISOString(),
+    createdAt: new Date(f.createdAt || Date.now()).toISOString(),
+    expiresAt: new Date(f.expiresAt || Date.now()).toISOString(),
     status: f.status,
     daysUntilExpiry: Math.ceil((f.expiresAt - now) / 86_400_000),
   };

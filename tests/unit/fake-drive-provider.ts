@@ -47,6 +47,9 @@ export class FakeDriveProvider implements StorageProvider {
   async ensureManagedFolder() {
     return { id: this.managedFolderId };
   }
+  async ensureFolder(name: string, parentId?: string) {
+    return { id: `folder-${name}-${parentId || this.managedFolderId}` };
+  }
 
   async createResumableUpload(input: {
     name: string;

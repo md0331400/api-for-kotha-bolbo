@@ -47,6 +47,7 @@ export const POST = apiRoute(
       idempotencyKey: body.idempotencyKey,
       ticketTtlMs: config.uploadTicketTtlMinutes * 60_000,
       defaultQuotaBytes: config.defaultUserQuotaBytes,
+      appId: ctx.auth!.appId,
     });
 
     // Idempotent replay: return the existing ticket (including its provider URL).
@@ -81,7 +82,16 @@ export const POST = apiRoute(
     // Reserve quota first, then assign a provider (fail → release reservation).
     let assignment;
     try {
-      assignment = await createResumableOnPool(store, config, {
+      const appId = ctx.auth!.appId;
+    if (!appId) {
+      throw new ApiError("FORBIDDEN", "An application identity (X-API-Key) is required to access storage.", {
+        details: { hint: "Include a valid X-API-Key header associated with a registered application." },
+      });
+    }
+    assignment = await createResumableOnPool(store, config, {
+        appId,
+        uid: user.uid,
+        category: body.category,
         name: body.name,
         mimeType: body.mimeType,
         sizeBytes: body.sizeBytes,

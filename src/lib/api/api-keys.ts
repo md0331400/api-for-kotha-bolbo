@@ -102,6 +102,7 @@ export function publicApiKey(rec: ApiKeyRecord) {
     name: rec.name,
     maskedKey: maskApiKey(rec),
     subjectUid: rec.subjectUid,
+    appId: rec.appId || null,
     scopes: rec.scopes,
     status: rec.status,
     createdAt: new Date(rec.createdAt).toISOString(),

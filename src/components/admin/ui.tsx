@@ -35,7 +35,7 @@ export function Card({
       {(title || actions) && (
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
-            {title && <h2 className="text-base font-semibold text-slate-900">{title}</h2>}
+            {title && <h2 className="text-base font-semibold !text-slate-900">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>}
           </div>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
@@ -58,7 +58,7 @@ export function StatCard({
   tone?: "default" | "success" | "warning" | "danger";
 }) {
   const tones = {
-    default: "text-slate-900",
+    default: "!text-slate-900",
     success: "text-emerald-600",
     warning: "text-amber-600",
     danger: "text-rose-600",
@@ -223,7 +223,7 @@ export function ConfirmDialog({
       <div className="absolute inset-0 bg-slate-900/40" onClick={onCancel} />
       <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
         <div className="flex items-start justify-between">
-          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+          <h3 className="text-base font-semibold !text-slate-900">{title}</h3>
           <button onClick={onCancel} className="rounded p-1 text-slate-400 hover:bg-slate-100" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
@@ -264,7 +264,7 @@ export function ConfirmDialog({
  * readable regardless of UA defaults, OS dark mode, or forced-dark browsers.
  */
 export const CONTROL_BASE =
-  "block w-full rounded-lg border bg-white text-sm text-slate-900 caret-brand-600 shadow-sm transition-colors " +
+  "block w-full rounded-lg border !bg-white text-sm !text-slate-900 caret-brand-600 shadow-sm transition-colors " +
   "placeholder:text-slate-400 " +
   "focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 " +
   "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 " +

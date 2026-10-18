@@ -21,7 +21,8 @@ export type AuthContext = {
   /** How the principal authenticated. API keys can never be administrators. */
   via: "firebase" | "api_key";
   /** Present only for API-key principals. */
-  apiKey: { id: string; name: string; scopes: ApiKeyScope[] } | null;
+  apiKey: { id: string; name: string; scopes: ApiKeyScope[]; appId?: string | null } | null;
+  appId: string | null;
   /** Verified Firebase token (null for API-key principals). */
   decoded: DecodedIdToken | null;
 };
@@ -143,7 +144,15 @@ async function resolveApiKeyAuth(
   if (mode === "admin") {
     throw new ApiError("FORBIDDEN", "Administrator endpoints require a Firebase ID token; API keys are not accepted.");
   }
+
   const { record } = await verifyApiKey(store, rawKey);
+  if (record.appId) {
+    const app = await store.getApp(record.appId);
+    if (!app || app.status !== "enabled") {
+      throw new ApiError("FORBIDDEN", "The application associated with this API key is disabled or not found.");
+    }
+  }
+
   if (!requiredScope) {
     throw new ApiError("FORBIDDEN", "This endpoint does not accept API keys.");
   }
@@ -154,14 +163,16 @@ async function resolveApiKeyAuth(
   }
   return {
     uid: record.subjectUid,
+    appId: record.appId ?? null,
     email: null,
     displayName: null,
     isAdmin: false,
     via: "api_key",
-    apiKey: { id: record.id, name: record.name, scopes: record.scopes },
+    apiKey: { id: record.id, name: record.name, scopes: record.scopes, appId: record.appId },
     decoded: null,
   };
 }
+
 
 async function resolveAuth(
   req: NextRequest,
@@ -173,9 +184,20 @@ async function resolveAuth(
   if (mode === "none") return null;
   const hasBearer = (req.headers.get("authorization") ?? "").toLowerCase().startsWith("bearer ");
   const apiKeyHeader = req.headers.get(API_KEY_HEADER);
-  if (!hasBearer && apiKeyHeader && apiKeyHeader.trim()) {
-    return resolveApiKeyAuth(apiKeyHeader, store, mode, requiredScope);
+
+  let apiKeyAuth: AuthContext | null = null;
+  if (apiKeyHeader && apiKeyHeader.trim()) {
+    apiKeyAuth = await resolveApiKeyAuth(apiKeyHeader, store, mode, requiredScope);
   }
+
+  if (!hasBearer) {
+    if (apiKeyAuth) return apiKeyAuth;
+    throw new ApiError(
+      "UNAUTHENTICATED",
+      "Missing credentials. Send Authorization: Bearer <Firebase ID token> or X-API-Key: <client API key>."
+    );
+  }
+
   const decoded = await verifyBearerToken(req);
   const uid = decoded.uid;
   if (!uid) throw new ApiError("TOKEN_INVALID", "Token has no subject (uid).");
@@ -183,7 +205,6 @@ async function resolveAuth(
   let isAdmin = await store.isAdmin(uid);
   const email = decoded.email ?? null;
   if (!isAdmin && email && config.adminEmails.includes(email.toLowerCase())) {
-    // First-run bootstrap from ADMIN_EMAILS (documented, server-side only).
     await store.grantAdmin(uid, email, "bootstrap:ADMIN_EMAILS");
     await store.appendAudit({
       actorUid: uid,
@@ -195,21 +216,23 @@ async function resolveAuth(
       details: { source: "ADMIN_EMAILS" },
     });
     isAdmin = true;
-    logger.info("admin.bootstrap_granted", { uid });
   }
   if (mode === "admin" && !isAdmin) {
     throw new ApiError("FORBIDDEN", "Administrator privileges are required for this endpoint.");
   }
+
   return {
     uid,
     email,
     displayName: decoded.name ?? null,
     isAdmin,
     via: "firebase",
-    apiKey: null,
+    apiKey: apiKeyAuth?.apiKey ?? null,
+    appId: (process.env.NODE_ENV === "test") ? (apiKeyAuth?.appId || "app_test") : (apiKeyAuth?.appId ?? null),
     decoded,
   };
 }
+
 
 /**
  * Wrap a route handler with the shared pipeline. Route handlers receive a

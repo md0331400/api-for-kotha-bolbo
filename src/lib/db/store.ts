@@ -4,6 +4,7 @@ import type {
   AuditLogRecord,
   CleanupRetryRecord,
   CleanupRunRecord,
+  AppRecord,
   DriveAccountRecord,
   DriveTokenRecord,
   FileCategory,
@@ -17,6 +18,7 @@ import type {
 
 export type FileFilters = {
   uid?: string;
+  appId?: string | null;
   category?: FileCategory;
   status?: FileStatus;
   expiringInDays?: number;
@@ -37,6 +39,7 @@ export type CreateUploadInput = {
   name: string;
   mimeType: string;
   expectedBytes: number;
+  appId?: string | null;
   idempotencyKey: string;
   ticketTtlMs: number;
   defaultQuotaBytes: number;
@@ -163,6 +166,8 @@ export interface Store {
   ): Promise<DriveAccountRecord | null>;
   saveDriveToken(t: DriveTokenRecord): Promise<void>;
   getDriveToken(accountId: string): Promise<DriveTokenRecord | null>;
+  getDriveFolder(accountId: string, pathKey: string): Promise<string | null>;
+  setDriveFolder(accountId: string, pathKey: string, folderId: string): Promise<string>;
   deleteDriveToken(accountId: string): Promise<void>;
   /** Atomic single-claim of a provider object; false when already claimed. */
   claimProviderFile(accountId: string, providerFileId: string, fileId: string): Promise<boolean>;
@@ -206,6 +211,12 @@ export interface Store {
 
   // ---- client API keys ---------------------------------------------------
   createApiKey(rec: ApiKeyRecord): Promise<void>;
+
+  getApp(id: string): Promise<AppRecord | null>;
+  listApps(): Promise<AppRecord[]>;
+  createApp(app: AppRecord): Promise<void>;
+  updateApp(id: string, updates: Partial<AppRecord>): Promise<AppRecord | null>;
+  deleteApp(id: string): Promise<void>;
   getApiKey(id: string): Promise<ApiKeyRecord | null>;
   listApiKeys(): Promise<ApiKeyRecord[]>;
   updateApiKey(

@@ -5,6 +5,7 @@ import type {
   AuditLogRecord,
   CleanupRetryRecord,
   CleanupRunRecord,
+  AppRecord,
   DriveAccountRecord,
   DriveTokenRecord,
   FileRecord,
@@ -45,6 +46,20 @@ function matchQ(haystacks: Array<string | null | undefined>, q: string): boolean
  * Database's serialized transactions. NOT used for persistent records.
  */
 export class MemoryStore implements Store {
+  public driveFolders: Record<string, string> = {};
+
+  async getDriveFolder(accountId: string, pathKey: string): Promise<string | null> {
+    return this.run(() => this.driveFolders[`${accountId}/${pathKey}`] || null);
+  }
+  async setDriveFolder(accountId: string, pathKey: string, folderId: string): Promise<string> {
+    return this.run(() => {
+      const key = `${accountId}/${pathKey}`;
+      if (!this.driveFolders[key]) {
+        this.driveFolders[key] = folderId;
+      }
+      return this.driveFolders[key];
+    });
+  }
   private mutex: Promise<unknown> = Promise.resolve();
   users = new Map<string, UserRecord>();
   files = new Map<string, FileRecord>();
@@ -55,6 +70,7 @@ export class MemoryStore implements Store {
   driveTokens = new Map<string, DriveTokenRecord>();
   driveIdentities = new Map<string, string>(); // identityKey -> accountId
   apiKeys = new Map<string, ApiKeyRecord>();
+  apps = new Map<string, AppRecord>();
   providerClaims = new Map<string, string>(); // accountId|providerFileId -> fileId
   admins = new Map<string, { email: string | null; grantedAt: number; grantedBy: string | null }>();
   auditLogs: AuditLogRecord[] = [];
@@ -185,6 +201,7 @@ export class MemoryStore implements Store {
       const session: UploadSession & { reservationCounted?: boolean } = {
         id,
         uid: input.uid,
+        appId: input.appId || null,
         category: input.category,
         name: input.name,
         mimeType: input.mimeType,
@@ -295,6 +312,7 @@ export class MemoryStore implements Store {
       const file: FileRecord = {
         id: s.fileId!,
         uid: s.uid,
+        appId: s.appId || null,
         category: s.category,
         name: input.verifiedName || s.name,
         mimeType: input.verifiedMimeType || s.mimeType,
@@ -744,6 +762,32 @@ export class MemoryStore implements Store {
   async getApiKey(id: string) {
     const k = this.apiKeys.get(id);
     return k ? { ...k, scopes: [...k.scopes] } : null;
+  }
+
+  async getApp(id: string): Promise<AppRecord | null> {
+    return this.run(() => this.apps.get(id) || null);
+  }
+  async listApps(): Promise<AppRecord[]> {
+    return this.run(() => Array.from(this.apps.values()));
+  }
+  async createApp(app: AppRecord): Promise<void> {
+    return this.run(() => {
+      this.apps.set(app.id, app);
+    });
+  }
+  async updateApp(id: string, updates: Partial<AppRecord>): Promise<AppRecord | null> {
+    return this.run(() => {
+      const app = this.apps.get(id);
+      if (!app) return null;
+      const next = { ...app, ...updates };
+      this.apps.set(id, next);
+      return next;
+    });
+  }
+  async deleteApp(id: string): Promise<void> {
+    return this.run(() => {
+      this.apps.delete(id);
+    });
   }
 
   async listApiKeys() {
