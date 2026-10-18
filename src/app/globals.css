@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+::selection {
+  @apply bg-brand-100 text-brand-900;
+}
+
+/* Focus visibility for accessibility */
+:focus-visible {
+  outline: 2px solid rgb(99 102 241 / 0.7);
+  outline-offset: 2px;
+}
+
+/* Scrollbar polish */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
