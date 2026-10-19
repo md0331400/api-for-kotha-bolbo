@@ -55,14 +55,19 @@ function matchesIdentity(a: DriveAccountRecord, sub: string | null, email: strin
 
 /** Prefer records with the strongest evidence: sub match, then most recently updated. */
 function pickPrimary(cands: DriveAccountRecord[], sub: string | null): DriveAccountRecord {
+  if (cands.length === 1) return cands[0];
   return [...cands].sort((a, b) => {
-    const aSub = sub && a.googleAccountId === sub ? 1 : 0;
-    const bSub = sub && b.googleAccountId === sub ? 1 : 0;
+    const aSub = sub && typeof a.googleAccountId === "string" && a.googleAccountId === sub ? 1 : 0;
+    const bSub = sub && typeof b.googleAccountId === "string" && b.googleAccountId === sub ? 1 : 0;
     if (aSub !== bSub) return bSub - aSub;
     const aCred = a.status !== "disconnected" ? 1 : 0;
     const bCred = b.status !== "disconnected" ? 1 : 0;
     if (aCred !== bCred) return bCred - aCred;
-    return b.updatedAt - a.updatedAt;
+    const aUpdated = typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt) ? a.updatedAt : 0;
+    const bUpdated = typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt) ? b.updatedAt : 0;
+    if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+    // Deterministic tie-breaker: alphabetical id (stable across runs)
+    return a.id.localeCompare(b.id);
   })[0];
 }
 

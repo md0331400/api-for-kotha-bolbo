@@ -23,13 +23,19 @@ export const GET = apiRoute(
     const pendingRetries = await store.countPendingRetries();
 
     const confirmed = files.items.filter((f) => f.status === "confirmed");
-    const totalBytes = confirmed.reduce((n, f) => n + f.sizeBytes, 0);
+    const totalBytes = confirmed.reduce(
+      (n, f) => n + (typeof f.sizeBytes === "number" && Number.isFinite(f.sizeBytes) ? f.sizeBytes : 0),
+      0
+    );
 
     return dataResponse({
       users: {
         total: users.total,
-        restricted: users.items.filter((u) => u.restricted).length,
-        totalQuotaBytes: users.items.reduce((n, u) => n + u.quotaBytes, 0),
+        restricted: users.items.filter((u) => Boolean(u.restricted)).length,
+        totalQuotaBytes: users.items.reduce(
+          (n, u) => n + (typeof u.quotaBytes === "number" && Number.isFinite(u.quotaBytes) ? u.quotaBytes : 0),
+          0
+        ),
       },
       files: {
         total: files.total,
@@ -44,7 +50,7 @@ export const GET = apiRoute(
         disabled: accounts.filter((a) => a.status === "disabled").length,
         disconnected: accounts.filter((a) => a.status === "disconnected").length,
         error: accounts.filter((a) => a.status === "error").length,
-        verified: accounts.filter((a) => a.verified).length,
+        verified: accounts.filter((a) => Boolean(a.verified)).length,
       },
       expiringWithin7Days: expiringSoon.total,
       failedUploads: failedUploads.length,

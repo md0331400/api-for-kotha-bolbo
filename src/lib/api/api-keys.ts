@@ -109,9 +109,10 @@ function _safeISOString(value: unknown): string | null {
   }
   return null;
 }
-function _safeISOStringRequired(value: unknown): string {
+function _safeISOStringRequired(value: unknown): string | null {
   const s = _safeISOString(value);
-  return s ?? new Date().toISOString();
+  // Do not fabricate "now" for missing historical timestamps — return null so UI shows "—"
+  return s ?? null;
 }
 
 /** Public, non-secret projection for the admin dashboard. */
@@ -125,7 +126,7 @@ export function publicApiKey(rec: ApiKeyRecord) {
       appId: null,
       scopes: [],
       status: "active" as const,
-      createdAt: new Date().toISOString(),
+      createdAt: null as string | null,
       createdBy: "",
       createdByEmail: null,
       lastUsedAt: null,

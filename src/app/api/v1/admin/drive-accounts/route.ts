@@ -1,6 +1,7 @@
 import { apiRoute, dataResponse } from "@/lib/api/handler";
 import type { DriveAccountRecord } from "@/lib/db/types";
 import { safeISOString, safeISOStringNullable } from "@/lib/safe-date";
+import { logger } from "@/lib/logger";
 
 export type PublicDriveAccount = Omit<DriveAccountRecord, never> & { hasStoredCredentials: boolean };
 
@@ -17,10 +18,17 @@ export const GET = apiRoute(
     for (const a of accounts) {
       if (!a || typeof a.id !== "string") continue;
       let token = null;
+      let tokenReadFailed = false;
       try {
         token = await store.getDriveToken(a.id);
-      } catch {
+      } catch (e) {
+        tokenReadFailed = true;
         token = null;
+        logger.warn("drive.list.token_read_failed", {
+          requestId: ctx.requestId,
+          accountId: a.id,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
       shaped.push({
         id: a.id,
@@ -37,7 +45,9 @@ export const GET = apiRoute(
         totalBytes: typeof a.totalBytes === "number" ? a.totalBytes : 0,
         quotaInfo: a.quotaInfo ?? null,
         hasManagedFolder: Boolean(a.managedFolderId),
-        hasStoredCredentials: Boolean(token),
+        // When token read fails we cannot prove presence/absence — report false
+        // but observability is preserved via the warning above. Never leak token.
+        hasStoredCredentials: tokenReadFailed ? false : Boolean(token),
         hasGoogleAccountId: Boolean(a.googleAccountId),
         disabledReason: typeof a.disabledReason === "string" ? a.disabledReason : null,
       });

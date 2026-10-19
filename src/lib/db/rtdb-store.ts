@@ -177,7 +177,11 @@ export class RtdbStore implements Store {
 
   async listUsers(q: string | undefined, page: PageQuery): Promise<ListResult<UserRecord>> {
     const all = (await this.val<Record<string, UserRecord>>("users")) ?? {};
+    const rawCount = Object.keys(all).length;
     let items = Object.values(all).filter((u): u is UserRecord => Boolean(u && typeof u.uid === "string"));
+    if (items.length !== rawCount) {
+      logger.warn("db.corruption.filtered_users", { rawCount, kept: items.length, dropped: rawCount - items.length });
+    }
     if (q) items = items.filter((u) => matchQ([u.uid, u.email, u.displayName], q));
     items.sort((a, b) => (typeof b.createdAt === "number" ? b.createdAt : 0) - (typeof a.createdAt === "number" ? a.createdAt : 0));
     const total = items.length;
@@ -541,7 +545,11 @@ export class RtdbStore implements Store {
   async listFiles(filters: FileFilters, page: PageQuery): Promise<ListResult<FileRecord>> {
     const sourcePath = filters.uid ? `filesByUid/${safeKey(filters.uid)}` : "files";
     const all = (await this.val<Record<string, FileRecord>>(sourcePath)) ?? {};
+    const rawItemsCount = Object.keys(all).length;
     let items = Object.values(all).filter((f): f is FileRecord => Boolean(f && typeof f.id === "string"));
+    if (items.length !== rawItemsCount) {
+      logger.warn("db.corruption.filtered_files", { rawCount: rawItemsCount, kept: items.length, dropped: rawItemsCount - items.length, sourcePath });
+    }
     if (filters.uid) items = items.filter((f) => f.uid === filters.uid);
     if (filters.appId !== undefined) items = items.filter((f) => f.appId === filters.appId || (filters.appId === null && !f.appId));
     if (filters.category) items = items.filter((f) => f.category === filters.category);
@@ -638,7 +646,12 @@ export class RtdbStore implements Store {
   // ---- drive -------------------------------------------------------------
   async listDriveAccounts(): Promise<DriveAccountRecord[]> {
     const all = (await this.val<Record<string, DriveAccountRecord>>("driveAccounts")) ?? {};
-    return Object.values(all).filter((a): a is DriveAccountRecord => Boolean(a && typeof a.id === "string"));
+    const rawCount = Object.keys(all).length;
+    const items = Object.values(all).filter((a): a is DriveAccountRecord => Boolean(a && typeof a.id === "string"));
+    if (items.length !== rawCount) {
+      logger.warn("db.corruption.filtered_driveAccounts", { rawCount, kept: items.length, dropped: rawCount - items.length });
+    }
+    return items;
   }
 
   async getDriveAccount(id: string): Promise<DriveAccountRecord | null> {
@@ -767,7 +780,11 @@ export class RtdbStore implements Store {
     page: PageQuery
   ): Promise<ListResult<AuditLogRecord>> {
     const all = (await this.val<Record<string, AuditLogRecord>>("auditLogs")) ?? {};
+    const rawLogs = Object.keys(all).length;
     let items = Object.values(all).filter((l): l is AuditLogRecord => Boolean(l && typeof l.id === "string"));
+    if (items.length !== rawLogs) {
+      logger.warn("db.corruption.filtered_auditLogs", { rawCount: rawLogs, kept: items.length, dropped: rawLogs - items.length });
+    }
     if (filter.action) items = items.filter((l) => typeof l.action === "string" && l.action.includes(filter.action!));
     if (filter.actorUid) items = items.filter((l) => l.actorUid === filter.actorUid);
     items.sort((a, b) => (typeof b.at === "number" ? b.at : 0) - (typeof a.at === "number" ? a.at : 0));

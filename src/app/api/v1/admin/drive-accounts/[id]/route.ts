@@ -96,11 +96,22 @@ export const DELETE = apiRoute(
     if (confirm !== account.id && confirm !== "DISCONNECT") {
       throw new ApiError("BAD_REQUEST", "Disconnect requires ?confirm=<account id> or ?confirm=DISCONNECT.");
     }
-    // Token deletion is authoritative — if it fails, do NOT mark the
-    // account as disconnected. Reporting \"disconnected\" while credentials
-    // remain would be a false success and leave the account usable.
-    // Only proceed to status update after token is confirmed deleted.
-    const preToken = await store.getDriveToken(id).catch(() => null);
+    // Token deletion is authoritative — do NOT treat read failure as \"no token\".
+    // A read failure leaves state unknown; we must not skip verification.
+    let preToken: unknown = null;
+    let preTokenReadFailed = false;
+    try {
+      preToken = await store.getDriveToken(id);
+    } catch (e) {
+      preTokenReadFailed = true;
+      logger.warn("drive.disconnect.token_read_failed", {
+        requestId: ctx.requestId,
+        accountId: id,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      // Unknown whether token existed — treat as \"maybe\" so verification is not skipped.
+      preToken = undefined;
+    }
     try {
       await store.deleteDriveToken(id);
     } catch (e) {
@@ -108,13 +119,17 @@ export const DELETE = apiRoute(
         requestId: ctx.requestId,
         accountId: id,
         error: e instanceof Error ? e.message : String(e),
-        hasToken: Boolean(preToken),
+        preReadFailed: preTokenReadFailed,
+        hadToken: preToken !== null,
       });
       throw new ApiError("INTERNAL", "Could not destroy stored credentials. The account is still connected — retry the disconnect.", { cause: e });
     }
-    // Verify deletion when a token existed — if the provider still returns a
-    // token after delete, the operation did not take effect.
-    if (preToken) {
+    // Verify deletion. If preToken was null (definitely no token) we can skip,
+    // but if it was undefined (read failed) or an object (had token), we must
+    // confirm the store is now empty. A read failure during verification
+    // when preTokenReadFailed is true means we cannot prove deletion — fail safe.
+    const hadTokenOrUnknown = preToken !== null;
+    if (hadTokenOrUnknown) {
       try {
         const after = await store.getDriveToken(id);
         if (after) {
@@ -123,8 +138,15 @@ export const DELETE = apiRoute(
         }
       } catch (e) {
         if (e instanceof ApiError) throw e;
-        // Verification read failure is non-fatal — we already deleted, status
-        // update will be the source of truth.
+        if (preTokenReadFailed) {
+          // We never confirmed pre-state and now cannot confirm post-state — safest is to report failure
+          logger.error("drive.disconnect.token_verify_failed_after_read_failed", {
+            requestId: ctx.requestId,
+            accountId: id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+          throw new ApiError("INTERNAL", "Could not verify credential destruction after a read failure. Retry the disconnect and check logs.", { cause: e });
+        }
         logger.warn("drive.disconnect.token_verify_failed", { requestId: ctx.requestId, accountId: id, error: e instanceof Error ? e.message : String(e) });
       }
     }
@@ -134,9 +156,17 @@ export const DELETE = apiRoute(
       disabledReason: "Disconnected by administrator.",
       verified: false,
     });
-    if (!updated) {
-      logger.error("drive.disconnect.update_failed", { requestId: ctx.requestId, accountId: id });
-      throw new ApiError("INTERNAL", "Could not update drive account status. Retry the disconnect.");
+    if (!updated || updated.status !== "disconnected") {
+      logger.error("drive.disconnect.update_failed_partial", {
+        requestId: ctx.requestId,
+        accountId: id,
+        updatedStatus: updated?.status ?? null,
+        // Token was already destroyed at this point — account is in partial state
+        // (credentials gone but status not yet disconnected). Retry is safe and
+        // idempotent and will complete the status transition.
+        tokenAlreadyDestroyed: true,
+      });
+      throw new ApiError("INTERNAL", "Stored credentials were destroyed but the account status could not be updated. Retry the disconnect to complete it.", { cause: undefined });
     }
     try {
       await store.appendAudit({

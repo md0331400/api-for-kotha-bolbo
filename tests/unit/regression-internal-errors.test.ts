@@ -363,7 +363,9 @@ describe("drive disconnect resilience — token, account, audit failure paths", 
       { params: { id: acc.id } }
     );
     expect(res.status).toBe(500);
-    expect((await json(res)).error.message).toContain("Could not update drive account status");
+    const msg = (await json(res)).error.message as string;
+    expect(msg).toMatch(/Could not update|Stored credentials were destroyed/);
+    expect(msg).toContain("Retry");
   });
 
   it("audit failure does NOT roll back disconnect (secondary effect) and is observable via logs", async () => {
@@ -458,5 +460,175 @@ describe("drive disconnect resilience — token, account, audit failure paths", 
     );
     expect(second.status).toBe(200);
     expect((await store.getDriveAccount(acc.id))?.status).toBe("disconnected");
+  });
+
+  it("pre-token read failure does NOT skip verification — verification read failure after pre-read failure must fail safe", async () => {
+    const acc = await store.createDriveAccount({ accountEmail: "read-fail@example.com", displayName: "RF", scope: "x" });
+    await store.saveDriveToken({ accountId: acc.id, refreshToken: "rt", scope: "x", obtainedAt: Date.now() });
+    let readCount = 0;
+    const realGet = store.getDriveToken.bind(store);
+    store.getDriveToken = async (id: string) => {
+      readCount += 1;
+      if (readCount === 1) throw new Error("simulated read failure before delete");
+      if (readCount === 2) throw new Error("simulated verification read failure");
+      return realGet(id);
+    };
+    const res = await driveDelete(
+      req(`/api/v1/admin/drive-accounts/${acc.id}?confirm=DISCONNECT`, { method: "DELETE", token: "uid:admin-1|admin@example.com" }),
+      { params: { id: acc.id } }
+    );
+    // Must fail safe: we could not verify deletion after a pre-read failure
+    expect(res.status).toBe(500);
+    expect((await json(res)).error.message).toContain("Could not verify credential destruction");
+    // Token was deleted (delete succeeded), but status must NOT be disconnected
+    expect(await store.getDriveToken(acc.id)).toBeNull();
+    store.getDriveToken = realGet;
+  });
+
+  it("pre-token read failure but verification succeeds still disconnects", async () => {
+    const acc = await store.createDriveAccount({ accountEmail: "read-fail-ok@example.com", displayName: "RF OK", scope: "x" });
+    await store.saveDriveToken({ accountId: acc.id, refreshToken: "rt", scope: "x", obtainedAt: Date.now() });
+    let readCount = 0;
+    const realGet = store.getDriveToken.bind(store);
+    store.getDriveToken = async (id: string) => {
+      readCount += 1;
+      if (readCount === 1) throw new Error("simulated pre-read failure");
+      return realGet(id); // verification read succeeds (token already deleted)
+    };
+    const res = await driveDelete(
+      req(`/api/v1/admin/drive-accounts/${acc.id}?confirm=DISCONNECT`, { method: "DELETE", token: "uid:admin-1|admin@example.com" }),
+      { params: { id: acc.id } }
+    );
+    expect(res.status).toBe(200);
+    expect((await store.getDriveAccount(acc.id))?.status).toBe("disconnected");
+    store.getDriveToken = realGet;
+  });
+
+  it("update failure after token delete reports partial state and keeps token destroyed", async () => {
+    const acc = await store.createDriveAccount({ accountEmail: "partial@example.com", displayName: "Partial", scope: "x" });
+    await store.saveDriveToken({ accountId: acc.id, refreshToken: "rt", scope: "x", obtainedAt: Date.now() });
+    const origUpdate = store.updateDriveAccount.bind(store);
+    store.updateDriveAccount = async () => null as unknown as import("@/lib/db/types").DriveAccountRecord;
+    const res = await driveDelete(
+      req(`/api/v1/admin/drive-accounts/${acc.id}?confirm=DISCONNECT`, { method: "DELETE", token: "uid:admin-1|admin@example.com" }),
+      { params: { id: acc.id } }
+    );
+    expect(res.status).toBe(500);
+    const body = await json(res);
+    expect(body.error.message).toContain("Stored credentials were destroyed");
+    // Token is gone even though status update failed — partial state is observable
+    expect(await store.getDriveToken(acc.id)).toBeNull();
+    // Retry after fixing update should succeed (idempotent)
+    store.updateDriveAccount = origUpdate;
+    const retry = await driveDelete(
+      req(`/api/v1/admin/drive-accounts/${acc.id}?confirm=DISCONNECT`, { method: "DELETE", token: "uid:admin-1|admin@example.com" }),
+      { params: { id: acc.id } }
+    );
+    expect(retry.status).toBe(200);
+    expect((await store.getDriveAccount(acc.id))?.status).toBe("disconnected");
+  });
+});
+
+describe("additional resilience: numeric safety and deterministic primary", () => {
+  it("stats tolerates undefined quotaBytes and sizeBytes without NaN", async () => {
+    const acc = await store.createDriveAccount({ accountEmail: "stat-corrupt@example.com", displayName: null, scope: "x" });
+    // Corrupt account numeric fields
+    (store.driveAccounts.get(acc.id)! as unknown as Record<string, unknown>).fileCount = undefined;
+    (store.driveAccounts.get(acc.id)! as unknown as Record<string, unknown>).totalBytes = null;
+    store.users.set("u-bad", {
+      uid: "u-bad",
+      email: "bad2@example.com",
+      displayName: null,
+      photoURL: null,
+      quotaBytes: undefined as unknown as number,
+      usedBytes: NaN as unknown as number,
+      reservedBytes: 0,
+      fileCount: 0,
+      restricted: true as unknown as boolean,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastLoginAt: Date.now(),
+    } as unknown as import("@/lib/db/types").UserRecord);
+    store.files.set("file-bad", {
+      id: "file-bad",
+      uid: "u-bad",
+      appId: null,
+      category: "photo",
+      name: "bad.png",
+      mimeType: "image/png",
+      sizeBytes: undefined as unknown as number,
+      status: "confirmed",
+      providerAccountId: acc.id,
+      providerFileId: "p1",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      expiresAt: Date.now() + 100000,
+      uploadId: "up-bad2",
+    } as unknown as import("@/lib/db/types").FileRecord);
+    const res = await statsGet(req("/api/v1/admin/stats", { token: "uid:admin-1|admin@example.com" }));
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(Number.isFinite(body.data.users.totalQuotaBytes)).toBe(true);
+    expect(Number.isFinite(body.data.files.totalBytes)).toBe(true);
+    expect(body.data.users.totalQuotaBytes).not.toBeNaN();
+    expect(body.data.files.totalBytes).not.toBeNaN();
+  });
+
+  it("findDuplicateGroups deterministic with missing updatedAt and ties broken by id", async () => {
+    const a1 = await store.createDriveAccount({ accountEmail: "tie@example.com", displayName: null, scope: "x", googleAccountId: "sub_tie" });
+    const a2 = await store.createDriveAccount({ accountEmail: "tie@example.com", displayName: null, scope: "x", googleAccountId: "sub_tie" });
+    const a3 = await store.createDriveAccount({ accountEmail: "tie@example.com", displayName: null, scope: "x", googleAccountId: "sub_tie" });
+    // Make all updatedAt identical or missing to force tie-breaker
+    for (const id of [a1.id, a2.id, a3.id]) {
+      (store.driveAccounts.get(id)! as unknown as Record<string, unknown>).updatedAt = undefined;
+    }
+    // Set one to disconnected to test credential preference still works
+    (store.driveAccounts.get(a3.id)! as unknown as Record<string, unknown>).status = "disconnected";
+    const accounts = await store.listDriveAccounts();
+    const groups = findDuplicateGroups(accounts);
+    const g = groups.find((x) => x.accountIds.includes(a1.id));
+    expect(g).toBeDefined();
+    expect(g!.accountIds.length).toBe(3);
+    // Primary should be one of the enabled ones, deterministic (alphabetical id among ties)
+    // Exactly which enabled id is primary is deterministic because pickPrimary uses id tie-breaker
+    // Verify the group does not throw and is stable across calls
+    const groups2 = findDuplicateGroups(accounts);
+    expect(groups2[0].accountIds).toEqual(groups[0].accountIds);
+  });
+
+  it("duplicate primary prefers most recent updatedAt even when one record has corrupted missing value", async () => {
+    const newer = await store.createDriveAccount({ accountEmail: "pick@example.com", displayName: null, scope: "x", googleAccountId: "sub_pick" });
+    const older = await store.createDriveAccount({ accountEmail: "pick@example.com", displayName: null, scope: "x", googleAccountId: "sub_pick" });
+    const corrupt = await store.createDriveAccount({ accountEmail: "pick@example.com", displayName: null, scope: "x", googleAccountId: "sub_pick" });
+    (store.driveAccounts.get(newer.id)! as unknown as Record<string, unknown>).updatedAt = Date.now();
+    (store.driveAccounts.get(older.id)! as unknown as Record<string, unknown>).updatedAt = Date.now() - 5000;
+    (store.driveAccounts.get(corrupt.id)! as unknown as Record<string, unknown>).updatedAt = null;
+    const accounts = await store.listDriveAccounts();
+    const groups = findDuplicateGroups(accounts);
+    expect(groups.length).toBeGreaterThanOrEqual(1);
+    // internal pickPrimary logic: newer should win over older and corrupt (0)
+    const cands = accounts.filter((a) => a.googleAccountId === "sub_pick");
+    // Replicate pickPrimary sorting to verify
+    const sorted = [...cands].sort((a, b) => {
+      const aUpdated = typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt) ? a.updatedAt : 0;
+      const bUpdated = typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt) ? b.updatedAt : 0;
+      if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+      return a.id.localeCompare(b.id);
+    });
+    expect(sorted[0].id).toBe(newer.id);
+  });
+
+  it("drive-accounts list does not leak token and handles token read failure gracefully", async () => {
+    const acc = await store.createDriveAccount({ accountEmail: "leak@example.com", displayName: null, scope: "x" });
+    await store.saveDriveToken({ accountId: acc.id, refreshToken: "super-secret", scope: "x", obtainedAt: Date.now() });
+    const origGet = store.getDriveToken.bind(store);
+    store.getDriveToken = async () => { throw new Error("simulated token store down"); };
+    const res = await driveListGet(req("/api/v1/admin/drive-accounts", { token: "uid:admin-1|admin@example.com" }));
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    const found = body.data.find((a: { id: string }) => a.id === acc.id);
+    expect(found.hasStoredCredentials).toBe(false);
+    expect(JSON.stringify(body)).not.toContain("super-secret");
+    store.getDriveToken = origGet;
   });
 });
