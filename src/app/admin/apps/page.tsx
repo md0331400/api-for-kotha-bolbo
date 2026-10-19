@@ -6,7 +6,7 @@ import { api, ApiClientError, describeError, type UiError } from "@/lib/admin/ap
 import { formatDate } from "@/lib/format";
 import { Badge, Button, Card, ConfirmDialog, ErrorBanner, Field, Input, PageLoading, Toast } from "@/components/admin/ui";
 import { PageHeader } from "@/components/admin/shell";
-import { Copy, Plus, Smartphone, Trash2 } from "lucide-react";
+import { Download, Plus, Smartphone, Trash2 } from "lucide-react";
 
 type AppRecord = {
   id: string;
@@ -52,7 +52,7 @@ export default function AppsPage() {
     setBusy(true);
     try {
       if (editApp) {
-        await api.patch(user!, `/api/v1/admin/apps/\${editApp.id}`, form);
+        await api.patch(user!, `/api/v1/admin/apps/${editApp.id}`, form);
         setToast({ message: "Application updated.", tone: "success" });
       } else {
         await api.post(user!, "/api/v1/admin/apps", form);
@@ -72,7 +72,7 @@ export default function AppsPage() {
     if (!confirmDelete) return;
     setBusy(true);
     try {
-      await api.del(user!, `/api/v1/admin/apps/\${confirmDelete.id}`);
+      await api.del(user!, `/api/v1/admin/apps/${confirmDelete.id}`);
       setToast({ message: "Application deleted.", tone: "success" });
       setConfirmDelete(null);
       await load();
@@ -83,10 +83,43 @@ export default function AppsPage() {
     }
   };
 
+  const downloadConfig = async (app: AppRecord) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/v1/admin/apps/${app.id}/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        let message = `Config download failed (HTTP ${res.status}).`;
+        try {
+          const payload = await res.json();
+          message = payload?.error?.message || message;
+        } catch {}
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = "kotha-bolbo-storage-server.json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      setToast({ message: "SDK config downloaded.", tone: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Config download failed.", tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggle = async (app: AppRecord) => {
     setBusy(true);
     try {
-      await api.patch(user!, `/api/v1/admin/apps/\${app.id}`, { status: app.status === "enabled" ? "disabled" : "enabled" });
+      await api.patch(user!, `/api/v1/admin/apps/${app.id}`, { status: app.status === "enabled" ? "disabled" : "enabled" });
       setToast({ message: "Status updated.", tone: "success" });
       await load();
     } catch (err) {
@@ -130,7 +163,10 @@ export default function AppsPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end flex-wrap">
+                <Button variant="secondary" size="sm" onClick={() => downloadConfig(app)} disabled={busy}>
+                  <Download className="mr-1 h-3.5 w-3.5" /> Download JSON
+                </Button>
                 <Button variant="secondary" size="sm" onClick={() => { setForm({ name: app.name, packageName: app.packageName }); setEditApp(app); setCreateOpen(true); }}>
                   Edit
                 </Button>

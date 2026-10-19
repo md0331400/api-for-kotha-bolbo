@@ -34,19 +34,51 @@ export const PATCH = apiRoute(async (ctx) => {
 
   const updated = await store.updateApp(id, parsed);
   if (!updated) throw new ApiError("NOT_FOUND", "Application not found");
-  return dataResponse(updated);
+  const { clientApiKey: _clientApiKey, ...safeApp } = updated;
+  return dataResponse(safeApp);
 }, { auth: "admin" });
 
 export const DELETE = apiRoute(async (ctx) => {
   const store = ctx.store!;
   const id = ctx.params.id;
+  const app = await store.getApp(id);
+  if (!app) throw new ApiError("NOT_FOUND", "Application not found.");
 
-  // Refuse if we have API keys tied to it (for safety)
   const keys = await store.listApiKeys();
-  if (keys.some((k) => k.appId === id)) {
-    throw new ApiError("CONFLICT", "Cannot delete application: it has associated API keys.");
+  const associated = keys.filter((key) => key.appId === id);
+  const unrelatedKeys = associated.filter((key) => key.id !== app.clientApiKeyId);
+  if (unrelatedKeys.length) {
+    throw new ApiError("CONFLICT", "Cannot delete application while separately issued API keys are attached. Revoke or remove those keys first.");
+  }
+
+  if (app.clientApiKeyId && associated.some((key) => key.id === app.clientApiKeyId)) {
+    const key = associated.find((item) => item.id === app.clientApiKeyId)!;
+    await store.updateApiKey(key.id, {
+      status: "revoked",
+      revokedAt: Date.now(),
+      revokedBy: ctx.auth!.uid,
+    });
+    await store.appendAudit({
+      actorUid: ctx.auth!.uid,
+      actorEmail: ctx.auth!.email,
+      action: "apikey.revoke",
+      targetType: "api_key",
+      targetId: key.id,
+      requestId: ctx.requestId,
+      details: { name: key.name, subjectUid: key.subjectUid, reason: "application deleted" },
+    });
+    await store.deleteApiKey(key.id);
   }
 
   await store.deleteApp(id);
+  await store.appendAudit({
+    actorUid: ctx.auth!.uid,
+    actorEmail: ctx.auth!.email,
+    action: "app.delete",
+    targetType: "app",
+    targetId: id,
+    requestId: ctx.requestId,
+    details: { name: app.name, packageName: app.packageName },
+  });
   return dataResponse({ id, deleted: true });
 }, { auth: "admin" });
