@@ -15,12 +15,12 @@ type Stats = {
   driveAccounts: { total: number; enabled: number; disabled: number; disconnected: number; error: number; verified: number };
   expiringWithin7Days: number;
   failedUploads: number;
-  recentFailedUploads: Array<{ uploadId: string; name: string; category: string; error: string | null; updatedAt: string }>;
+  recentFailedUploads: Array<{ uploadId: string; name: string; category: string; error: string | null; updatedAt: string | null }>;
   cleanup: {
     lastRun: {
       id: string;
       status: string;
-      startedAt: string;
+      startedAt: string | null;
       finishedAt: string | null;
       deleted: number;
       failed: number;

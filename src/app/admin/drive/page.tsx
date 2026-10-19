@@ -26,7 +26,7 @@ type DriveAccount = {
   displayName: string | null;
   status: "enabled" | "disabled" | "disconnected" | "error";
   verified: boolean;
-  connectedAt: string;
+  connectedAt: string | null;
   lastSuccessAt: string | null;
   lastErrorAt: string | null;
   lastErrorMessage: string | null;
@@ -48,7 +48,7 @@ type DuplicateGroup = {
   key: string;
   kind: "googleAccountId" | "email";
   accountIds: string[];
-  accounts: Array<{ id: string; accountEmail: string | null; status: string; fileCount: number; connectedAt: string }>;
+  accounts: Array<{ id: string; accountEmail: string | null; status: string; fileCount: number; connectedAt: string | null }>;
 };
 
 const STATUS_TONE: Record<DriveAccount["status"], "green" | "amber" | "neutral" | "red"> = {

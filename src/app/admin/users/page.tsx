@@ -31,13 +31,13 @@ type AdminUser = {
   remainingBytes: number;
   fileCount: number;
   restricted: boolean;
-  createdAt: string;
-  lastLoginAt: string;
+  createdAt: string | null;
+  lastLoginAt: string | null;
 };
 
 type UserDetail = {
   user: AdminUser;
-  expiringSoon: Array<{ id: string; name: string; sizeBytes: number; expiresAt: string; category: string }>;
+  expiringSoon: Array<{ id: string; name: string; sizeBytes: number; expiresAt: string | null; category: string }>;
 };
 
 const DEFAULT_QUOTA = 2 * 1024 * 1024 * 1024;
