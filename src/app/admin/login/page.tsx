@@ -7,7 +7,18 @@ import { useAuth } from "@/lib/admin/auth-context";
 import { Button, ErrorBanner, InfoBanner, Input } from "@/components/admin/ui";
 
 export default function AdminLoginPage() {
-  const { user, session, loading, firebaseConfigured, authError, signInGoogle, signInEmail } = useAuth();
+  const {
+    user,
+    session,
+    loading,
+    firebaseConfigured,
+    configIssue,
+    configRetrying,
+    retryConfig,
+    authError,
+    signInGoogle,
+    signInEmail,
+  } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,8 +43,22 @@ export default function AdminLoginPage() {
           </div>
 
           {!firebaseConfigured ? (
-            <div className="mt-6">
-              <ErrorBanner message="Firebase web configuration is missing on the server. See docs/FIREBASE_SETUP.md." />
+            <div className="mt-6 space-y-2">
+              <ErrorBanner
+                message={
+                  configIssue?.message ??
+                  "Firebase web configuration is unavailable. See docs/FIREBASE_SETUP.md."
+                }
+                code={configIssue ? `CONFIG_${configIssue.kind.toUpperCase().replace("-", "_")}` : undefined}
+                onRetry={configIssue?.retryable ? () => void retryConfig() : undefined}
+                retrying={configRetrying}
+              />
+              {configIssue?.missingVariables.length ? (
+                <p className="text-xs text-slate-500">
+                  Missing:{" "}
+                  <span className="font-mono">{configIssue.missingVariables.join(", ")}</span>
+                </p>
+              ) : null}
             </div>
           ) : (
             <>
