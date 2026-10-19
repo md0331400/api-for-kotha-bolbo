@@ -34,7 +34,8 @@ export const PATCH = apiRoute(async (ctx) => {
 
   const updated = await store.updateApp(id, parsed);
   if (!updated) throw new ApiError("NOT_FOUND", "Application not found");
-  return dataResponse(updated);
+  const { clientApiKey: _clientApiKey, ...safeApp } = updated;
+  return dataResponse(safeApp);
 }, { auth: "admin" });
 
 export const DELETE = apiRoute(async (ctx) => {
