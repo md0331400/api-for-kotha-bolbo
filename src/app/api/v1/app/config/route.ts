@@ -1,5 +1,14 @@
 import { apiRoute, dataResponse, json } from "@/lib/api/handler";
-import { publicFirebaseWebConfig, missingConfigGroups } from "@/lib/config";
+import { publicFirebaseWebConfig, missingConfigGroups, type FirebaseWebConfig } from "@/lib/config";
+
+/** Names (never values) of the browser-facing variables that are absent. */
+function missingWebVariables(web: FirebaseWebConfig): string[] {
+  const missing: string[] = [];
+  if (!web.apiKey) missing.push("FIREBASE_API_KEY");
+  if (!web.authDomain) missing.push("FIREBASE_AUTH_DOMAIN");
+  if (!web.appId) missing.push("FIREBASE_APP_ID");
+  return missing;
+}
 
 /**
  * GET /api/v1/app/config
@@ -15,9 +24,9 @@ export const GET = apiRoute(
       data: {
         firebaseWebConfigured: configured,
         firebase: configured ? web : null,
-        missingConfigGroups: configured ? [] : missingConfigGroups().concat(
-          web.apiKey ? [] : ["FIREBASE_API_KEY / FIREBASE_AUTH_DOMAIN / FIREBASE_APP_ID (client)"]
-        ),
+        missingConfigGroups: configured
+          ? []
+          : missingWebVariables(web).concat(missingConfigGroups()),
       },
     });
   },

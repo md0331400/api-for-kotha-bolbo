@@ -18,24 +18,71 @@ Firebase Console → **Authentication → Settings → Authorized domains**:
 - Add your local dev domain (`localhost`) is pre-allowed for development.
 
 > Firebase Google sign-in (user identity) is **separate** from the Google OAuth used to connect
-> Drive storage accounts (section 3). The first authenticates app users; the second authorizes the
+> Drive storage accounts (section 6). The first authenticates app users; the second authorizes the
 > server to use a Google account as storage.
 
-## 2. Service account (server-only Admin SDK)
+## 2. Firebase web configuration (browser SDK)
+
+The admin console signs users in with the Firebase **web** SDK in the browser. The server exposes only
+this public configuration through `GET /api/v1/app/config`; the Admin SDK service account (section 3)
+never reaches the browser.
+
+Set these in **Vercel → Project Settings → Environment Variables** for the environment you are viewing.
+Values come from Firebase Console → **Project settings → General → Your apps → Web app → SDK setup and
+configuration**.
+
+| Variable | Firebase console field | Required |
+|---|---|---|
+| `FIREBASE_API_KEY` | `apiKey` | **Yes** |
+| `FIREBASE_AUTH_DOMAIN` | `authDomain` | **Yes** |
+| `FIREBASE_APP_ID` | `appId` | **Yes** |
+| `FIREBASE_PROJECT_ID` | `projectId` | Optional — defaults to `kotha-bolbo-aso` |
+| `FIREBASE_STORAGE_BUCKET` | `storageBucket` | Optional |
+| `FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` | Optional |
+| `FIREBASE_DATABASE_URL` | Realtime Database URL (section 4) | Optional here; required server-side |
+
+All three required variables must be non-empty. Empty or whitespace-only values are treated as missing,
+and `/admin/login` shows “Firebase web configuration is missing on the server”. The public diagnostic
+endpoint reports the same state and lists missing **variable names only**:
+
+```bash
+curl -s https://swkf.vercel.app/api/v1/app/config
+# → {"data":{"firebaseWebConfigured":true,"firebase":{...},"missingConfigGroups":[]}}
+```
+
+### Production vs Preview
+
+- Variables can be scoped to Production, Preview, or both. A Preview deployment does not inherit
+  Production values unless Preview is selected for each variable.
+- An environment change applies only to **new** deployments — redeploy after adding or editing a
+  variable.
+- Preview deployments behind **Vercel Deployment Protection** answer `/api/v1/app/config` with an HTML
+  login page or `401`. That is a protection response, not a missing configuration: open the production
+  URL, or disable protection for that preview. The admin UI now distinguishes these cases and offers a
+  retry instead of claiming the configuration is missing.
+
+### What is secret here?
+
+Nothing in this section is a credential: the Firebase web configuration is a project identifier that is
+delivered to every browser by design. Security still comes from Firebase Security Rules, authorized
+domains, and server-side Admin SDK checks. Never place the service account from section 3 (or any other
+secret) in a `NEXT_PUBLIC_*` variable or in this public payload.
+
+## 3. Service account (server-only Admin SDK)
 
 1. Firebase Console → Project settings → **Service accounts** → *Generate new private key*.
 2. Put the JSON's `client_email` into `FIREBASE_CLIENT_EMAIL` and `private_key` into
    `FIREBASE_PRIVATE_KEY` (Vercel keeps the `\n` escapes; the app un-escapes them at runtime).
 3. Keep this file out of Git. The Admin SDK must never ship in the APK or any browser bundle.
 
-## 3. Realtime Database (persistent store)
+## 4. Realtime Database (persistent store)
 
 1. Firebase Console → **Realtime Database** → create the database (choose a nearby region).
 2. Start in *locked* mode, then deploy [`firebase/database.rules.json`](../firebase/database.rules.json)
    (deny-all client rules + query indexes). All access goes through the Admin SDK.
 3. Copy the database URL into `FIREBASE_DATABASE_URL`.
 
-## 4. Cloud Messaging (optional — expiry notifications)
+## 5. Cloud Messaging (optional — expiry notifications)
 
 If you want the “file expiring in 7/3 days” notifications:
 
@@ -43,7 +90,7 @@ If you want the “file expiring in 7/3 days” notifications:
 2. Clients register their FCM token via `POST /api/v1/notifications/token`.
 3. If messaging or tokens are absent, notifications are recorded as `skipped` — nothing is faked.
 
-## 5. Google Cloud — Drive storage-pool OAuth
+## 6. Google Cloud — Drive storage-pool OAuth
 
 Create (or reuse) an OAuth client for **server-side web flows**:
 
@@ -87,7 +134,7 @@ Create (or reuse) an OAuth client for **server-side web flows**:
 - **Will not:** read, modify, or delete anything else in the account (the `drive.file` scope
   prevents it); create public links; expose tokens to clients.
 
-## 6. Administrator access
+## 7. Administrator access
 
 Admin status is stored server-side (`admins/{uid}`) and checked on every admin request. Bootstrap
 options:
@@ -96,7 +143,7 @@ options:
   endpoint; or
 - `node scripts/admin-grant.mjs <uid> [email]` with the service-account env vars.
 
-## 7. Vercel OAuth/redirect checklist
+## 8. Vercel OAuth/redirect checklist
 
 | Item | Value |
 |---|---|
@@ -105,9 +152,11 @@ options:
 | `APP_BASE_URL` | `https://swkf.vercel.app` (must match the redirect URI host exactly) |
 | `CORS_ORIGINS` | origins of other web clients (the Android APK is unaffected) |
 
-## 8. Verification checklist
+## 9. Verification checklist
 
 - [ ] `GET /api/v1/health` shows `firebaseServer: configured` and `googleDriveOAuth: configured`.
+- [ ] `GET /api/v1/app/config` shows `firebaseWebConfigured: true` and `missingConfigGroups: []`
+      for the same environment you are testing.
 - [ ] Email/password sign-in works at `/admin/login`.
 - [ ] Google sign-in works at `/admin/login`.
 - [ ] An invalid/expired ID token is rejected (`401 TOKEN_INVALID` / `TOKEN_EXPIRED`).

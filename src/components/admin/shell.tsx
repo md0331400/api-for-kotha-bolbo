@@ -86,7 +86,17 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Guard({ children }: { children: React.ReactNode }) {
-  const { loading, user, session, firebaseConfigured, authError, signOut } = useAuth();
+  const {
+    loading,
+    user,
+    session,
+    firebaseConfigured,
+    configIssue,
+    configRetrying,
+    retryConfig,
+    authError,
+    signOut,
+  } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -109,10 +119,22 @@ function Guard({ children }: { children: React.ReactNode }) {
   if (!firebaseConfigured) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="max-w-lg">
+        <div className="max-w-lg space-y-2">
           <ErrorBanner
-            message="Firebase web configuration is missing. Set FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN and FIREBASE_APP_ID in the deployment environment (see docs/FIREBASE_SETUP.md)."
+            message={
+              configIssue?.message ??
+              "Firebase web configuration is unavailable. See docs/FIREBASE_SETUP.md."
+            }
+            code={configIssue ? `CONFIG_${configIssue.kind.toUpperCase().replace("-", "_")}` : undefined}
+            onRetry={configIssue?.retryable ? () => void retryConfig() : undefined}
+            retrying={configRetrying}
           />
+          {configIssue?.missingVariables.length ? (
+            <p className="text-xs text-slate-500">
+              Missing:{" "}
+              <span className="font-mono">{configIssue.missingVariables.join(", ")}</span>
+            </p>
+          ) : null}
         </div>
       </div>
     );
