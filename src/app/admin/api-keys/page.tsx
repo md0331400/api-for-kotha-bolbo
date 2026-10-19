@@ -31,7 +31,7 @@ type ApiKey = {
   appId?: string | null;
   scopes: string[];
   status: "active" | "revoked";
-  createdAt: string;
+  createdAt: string | null;
   createdBy: string;
   createdByEmail: string | null;
   lastUsedAt: string | null;

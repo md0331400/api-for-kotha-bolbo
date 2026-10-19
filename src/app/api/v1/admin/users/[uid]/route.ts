@@ -2,6 +2,7 @@ import { apiRoute, dataResponse } from "@/lib/api/handler";
 import { ApiError } from "@/lib/errors";
 import { parseOrThrow, setUserQuotaSchema } from "@/lib/validation";
 import { toPublicFile } from "@/lib/db/types";
+import { safeISOString } from "@/lib/safe-date";
 
 /**
  * GET /api/v1/admin/users/:uid
@@ -20,18 +21,18 @@ export const GET = apiRoute(
     return dataResponse({
       user: {
         uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        quotaBytes: user.quotaBytes,
-        usedBytes: user.usedBytes,
-        reservedBytes: user.reservedBytes,
-        remainingBytes: snapshot!.remainingBytes,
-        fileCount: user.fileCount,
-        restricted: user.restricted,
-        createdAt: new Date(user.createdAt).toISOString(),
-        lastLoginAt: new Date(user.lastLoginAt).toISOString(),
+        email: user.email ?? null,
+        displayName: user.displayName ?? null,
+        quotaBytes: typeof user.quotaBytes === "number" ? user.quotaBytes : 0,
+        usedBytes: typeof user.usedBytes === "number" ? user.usedBytes : 0,
+        reservedBytes: typeof user.reservedBytes === "number" ? user.reservedBytes : 0,
+        remainingBytes: snapshot?.remainingBytes ?? 0,
+        fileCount: typeof user.fileCount === "number" ? user.fileCount : 0,
+        restricted: Boolean(user.restricted),
+        createdAt: safeISOString((user as unknown as Record<string, unknown>).createdAt),
+        lastLoginAt: safeISOString((user as unknown as Record<string, unknown>).lastLoginAt),
       },
-      expiringSoon,
+      expiringSoon: Array.isArray(expiringSoon) ? expiringSoon : [],
     });
   },
   { auth: "admin", rateLimit: { limit: 240, windowSec: 60, bucket: "admin" } }

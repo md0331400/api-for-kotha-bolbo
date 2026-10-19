@@ -2,6 +2,7 @@ import { apiRoute, dataResponse, ensureUser } from "@/lib/api/handler";
 import { parseOrThrow, uploadTicketSchema, isMimeAllowedForCategory } from "@/lib/validation";
 import { ApiError, isApiError } from "@/lib/errors";
 import { createResumableOnPool } from "@/lib/storage/pool";
+import { safeISOString } from "@/lib/safe-date";
 
 async function readJson(req: Request): Promise<unknown> {
   try {
@@ -61,14 +62,14 @@ export const POST = apiRoute(
         mimeType: session.mimeType,
         expectedBytes: session.expectedBytes,
         reservedBytes: session.reservedBytes,
-        createdAt: new Date(session.createdAt).toISOString(),
-        ticketExpiresAt: new Date(session.ticketExpiresAt).toISOString(),
+        createdAt: safeISOString((session as unknown as Record<string, unknown>).createdAt),
+        ticketExpiresAt: safeISOString((session as unknown as Record<string, unknown>).ticketExpiresAt),
         upload: {
           provider: "google-drive",
           method: "PUT",
           url: session.providerSessionUrl,
           headers: { "Content-Type": session.mimeType, "X-Upload-Content-Length": String(session.expectedBytes) },
-          expiresAt: new Date(session.ticketExpiresAt).toISOString(),
+          expiresAt: safeISOString((session as unknown as Record<string, unknown>).ticketExpiresAt),
         },
         reused: true,
       });
@@ -114,14 +115,14 @@ export const POST = apiRoute(
       mimeType: session.mimeType,
       expectedBytes: session.expectedBytes,
       reservedBytes: session.reservedBytes,
-      createdAt: new Date(session.createdAt).toISOString(),
-      ticketExpiresAt: new Date(session.ticketExpiresAt).toISOString(),
+      createdAt: safeISOString((session as unknown as Record<string, unknown>).createdAt),
+      ticketExpiresAt: safeISOString((session as unknown as Record<string, unknown>).ticketExpiresAt),
       upload: {
         provider: "google-drive",
         method: "PUT",
         url: assignment.uploadUrl,
         headers: assignment.headers,
-        expiresAt: new Date(assignment.expiresAt).toISOString(),
+        expiresAt: safeISOString((assignment as unknown as Record<string, unknown>).expiresAt),
       },
       reused: false,
     });

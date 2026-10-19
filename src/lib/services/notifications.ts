@@ -9,6 +9,7 @@ import { requireAdminSdk } from "@/lib/firebase-admin";
 import type { Store } from "@/lib/db/store";
 import type { FileRecord } from "@/lib/db/types";
 import { logger } from "@/lib/logger";
+import { safeISOString } from "@/lib/safe-date";
 
 export async function notifyFileExpiring(
   store: Store,
@@ -37,7 +38,7 @@ export async function notifyFileExpiring(
         fileId: file.id,
         fileName: file.name,
         daysBefore: String(daysBefore),
-        expiresAt: new Date(file.expiresAt).toISOString(),
+        expiresAt: safeISOString((file as unknown as Record<string, unknown>).expiresAt) ?? "",
       },
       notification: {
         title: "Storage file expiring soon",

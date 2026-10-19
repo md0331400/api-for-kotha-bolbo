@@ -2,6 +2,7 @@ import { apiRoute, dataResponse } from "@/lib/api/handler";
 import { ApiError } from "@/lib/errors";
 import { parseOrThrow, drivePatchSchema } from "@/lib/validation";
 import { clearTokenCache, recordAccountSuccess } from "@/lib/storage/pool";
+import { logger } from "@/lib/logger";
 
 async function readJson(req: Request): Promise<unknown> {
   try {
@@ -59,17 +60,22 @@ export const PATCH = apiRoute(
       }
     }
 
-    await store.appendAudit({
-      actorUid: ctx.auth!.uid,
-      actorEmail: ctx.auth!.email,
-      action: `drive.${body.action}`,
-      targetType: "drive_account",
-      targetId: id,
-      requestId: ctx.requestId,
-      details: { reason: body.reason ?? null },
-    });
+    try {
+      await store.appendAudit({
+        actorUid: ctx.auth!.uid,
+        actorEmail: ctx.auth!.email,
+        action: `drive.${body.action}`,
+        targetType: "drive_account",
+        targetId: id,
+        requestId: ctx.requestId,
+        details: { reason: body.reason ?? null },
+      });
+    } catch (e) {
+      logger.warn("drive.patch.audit_failed", { requestId: ctx.requestId, accountId: id, error: e instanceof Error ? e.message : String(e) });
+    }
     const updated = await store.getDriveAccount(id);
-    return dataResponse({ id, status: updated!.status, verified: updated!.verified, lastErrorMessage: updated!.lastErrorMessage });
+    if (!updated) throw new ApiError("NOT_FOUND", "Drive account not found after update.");
+    return dataResponse({ id, status: updated.status, verified: updated.verified, lastErrorMessage: updated.lastErrorMessage });
   },
   { auth: "admin", rateLimit: { limit: 240, windowSec: 60, bucket: "admin" } }
 );
@@ -90,22 +96,101 @@ export const DELETE = apiRoute(
     if (confirm !== account.id && confirm !== "DISCONNECT") {
       throw new ApiError("BAD_REQUEST", "Disconnect requires ?confirm=<account id> or ?confirm=DISCONNECT.");
     }
-    await store.deleteDriveToken(id);
+    // Token deletion is authoritative — do NOT treat read failure as \"no token\".
+    // A read failure leaves state unknown; we must not skip verification.
+    let preToken: unknown = null;
+    let preTokenReadFailed = false;
+    try {
+      preToken = await store.getDriveToken(id);
+    } catch (e) {
+      preTokenReadFailed = true;
+      logger.warn("drive.disconnect.token_read_failed", {
+        requestId: ctx.requestId,
+        accountId: id,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      // Unknown whether token existed — treat as \"maybe\" so verification is not skipped.
+      preToken = undefined;
+    }
+    try {
+      await store.deleteDriveToken(id);
+    } catch (e) {
+      logger.error("drive.disconnect.token_delete_failed", {
+        requestId: ctx.requestId,
+        accountId: id,
+        error: e instanceof Error ? e.message : String(e),
+        preReadFailed: preTokenReadFailed,
+        hadToken: preToken !== null,
+      });
+      throw new ApiError("INTERNAL", "Could not destroy stored credentials. The account is still connected — retry the disconnect.", { cause: e });
+    }
+    // Verify deletion. If preToken was null (definitely no token) we can skip,
+    // but if it was undefined (read failed) or an object (had token), we must
+    // confirm the store is now empty. A read failure during verification
+    // when preTokenReadFailed is true means we cannot prove deletion — fail safe.
+    const hadTokenOrUnknown = preToken !== null;
+    if (hadTokenOrUnknown) {
+      try {
+        const after = await store.getDriveToken(id);
+        if (after) {
+          logger.error("drive.disconnect.token_still_present", { requestId: ctx.requestId, accountId: id });
+          throw new ApiError("INTERNAL", "Stored credentials still present after delete. Retry the disconnect.");
+        }
+      } catch (e) {
+        if (e instanceof ApiError) throw e;
+        if (preTokenReadFailed) {
+          // We never confirmed pre-state and now cannot confirm post-state — safest is to report failure
+          logger.error("drive.disconnect.token_verify_failed_after_read_failed", {
+            requestId: ctx.requestId,
+            accountId: id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+          throw new ApiError("INTERNAL", "Could not verify credential destruction after a read failure. Retry the disconnect and check logs.", { cause: e });
+        }
+        logger.warn("drive.disconnect.token_verify_failed", { requestId: ctx.requestId, accountId: id, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
     clearTokenCache(id);
-    await store.updateDriveAccount(id, {
+    const updated = await store.updateDriveAccount(id, {
       status: "disconnected",
       disabledReason: "Disconnected by administrator.",
       verified: false,
     });
-    await store.appendAudit({
-      actorUid: ctx.auth!.uid,
-      actorEmail: ctx.auth!.email,
-      action: "drive.disconnect",
-      targetType: "drive_account",
-      targetId: id,
-      requestId: ctx.requestId,
-      details: { fileCount: account.fileCount, accountEmail: account.accountEmail },
-    });
+    if (!updated || updated.status !== "disconnected") {
+      logger.error("drive.disconnect.update_failed_partial", {
+        requestId: ctx.requestId,
+        accountId: id,
+        updatedStatus: updated?.status ?? null,
+        // Token was already destroyed at this point — account is in partial state
+        // (credentials gone but status not yet disconnected). Retry is safe and
+        // idempotent and will complete the status transition.
+        tokenAlreadyDestroyed: true,
+      });
+      throw new ApiError("INTERNAL", "Stored credentials were destroyed but the account status could not be updated. Retry the disconnect to complete it.", { cause: undefined });
+    }
+    try {
+      await store.appendAudit({
+        actorUid: ctx.auth!.uid,
+        actorEmail: ctx.auth!.email,
+        action: "drive.disconnect",
+        targetType: "drive_account",
+        targetId: id,
+        requestId: ctx.requestId,
+        details: {
+          fileCount: typeof account.fileCount === "number" ? account.fileCount : 0,
+          accountEmail: account.accountEmail ?? null,
+        },
+      });
+    } catch (e) {
+      logger.warn("drive.disconnect.audit_failed", {
+        requestId: ctx.requestId,
+        accountId: id,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      // Audit is secondary — credentials are already destroyed and status is
+      // disconnected. Do not roll back, but the warning is observable and the
+      // operation is idempotent so a retry will attempt audit again.
+    }
     return dataResponse({ id, status: "disconnected" });
   },
   { auth: "admin", rateLimit: { limit: 240, windowSec: 60, bucket: "admin" } }

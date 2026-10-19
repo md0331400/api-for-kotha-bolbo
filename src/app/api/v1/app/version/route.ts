@@ -1,4 +1,5 @@
 import { apiRoute, dataResponse } from "@/lib/api/handler";
+import { safeISOString } from "@/lib/safe-date";
 
 /**
  * GET /api/v1/app/version
@@ -38,7 +39,7 @@ export const GET = apiRoute(
       updateUrl: rec.updateUrl || null,
       forceUpdate: rec.forceUpdate,
       releaseNotes: rec.releaseNotes,
-      publishedAt: new Date(rec.publishedAt).toISOString(),
+      publishedAt: safeISOString(rec.publishedAt as unknown as number),
     });
   },
   { auth: "none", config: "optional", rateLimit: { limit: 120, windowSec: 60, bucket: "app" } }

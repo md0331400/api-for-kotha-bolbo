@@ -29,10 +29,10 @@ type AdminFile = {
   name: string;
   mimeType: string;
   sizeBytes: number;
-  createdAt: string;
-  expiresAt: string;
+  createdAt: string | null;
+  expiresAt: string | null;
   status: string;
-  daysUntilExpiry: number;
+  daysUntilExpiry: number | null;
   providerAccountId: string;
   providerFileId: string;
   deleteAttempts: number;
@@ -206,11 +206,11 @@ export default function FilesPage() {
                 <td className="px-3 py-2.5 tabular-nums text-slate-700">{formatBytes(f.sizeBytes)}</td>
                 <td className="px-3 py-2.5 text-slate-500">{formatDate(f.createdAt)}</td>
                 <td className="px-3 py-2.5">
-                  <span className={f.daysUntilExpiry <= 7 && f.status === "confirmed" ? "text-amber-600" : "text-slate-500"}>
+                  <span className={typeof f.daysUntilExpiry === "number" && f.daysUntilExpiry <= 7 && f.status === "confirmed" ? "text-amber-600" : "text-slate-500"}>
                     {formatDate(f.expiresAt)}
                   </span>
                   {f.status === "confirmed" && (
-                    <p className="text-[11px] text-slate-400">{f.daysUntilExpiry} day(s) left</p>
+                    <p className="text-[11px] text-slate-400">{typeof f.daysUntilExpiry === "number" ? `${f.daysUntilExpiry} day(s) left` : "—"}</p>
                   )}
                 </td>
                 <td className="px-3 py-2.5">

@@ -1,5 +1,6 @@
 import { apiRoute, dataResponse } from "@/lib/api/handler";
 import { findDuplicateGroups } from "@/lib/storage/account-identity";
+import { safeISOString } from "@/lib/safe-date";
 
 /**
  * GET /api/v1/admin/drive-accounts/duplicates
@@ -12,19 +13,19 @@ export const GET = apiRoute(
     const accounts = await ctx.store!.listDriveAccounts();
     const groups = findDuplicateGroups(accounts).map((g) => ({
       ...g,
-      accounts: g.accountIds.map((id) => {
-        const a = accounts.find((x) => x.id === id)!;
-        return {
+      accounts: g.accountIds
+        .map((id) => accounts.find((x) => x && x.id === id))
+        .filter((a): a is NonNullable<typeof a> => Boolean(a))
+        .map((a) => ({
           id: a.id,
-          accountEmail: a.accountEmail,
-          status: a.status,
-          verified: a.verified,
-          fileCount: a.fileCount,
-          totalBytes: a.totalBytes,
-          connectedAt: new Date(a.connectedAt).toISOString(),
+          accountEmail: a.accountEmail ?? null,
+          status: typeof a.status === "string" ? a.status : "unknown",
+          verified: Boolean(a.verified),
+          fileCount: typeof a.fileCount === "number" ? a.fileCount : 0,
+          totalBytes: typeof a.totalBytes === "number" ? a.totalBytes : 0,
+          connectedAt: safeISOString((a as unknown as Record<string, unknown>).connectedAt),
           hasGoogleAccountId: Boolean(a.googleAccountId),
-        };
-      }),
+        })),
     }));
     return dataResponse({ groups, total: groups.length });
   },

@@ -143,9 +143,9 @@ export class MemoryStore implements Store {
   }
 
   async listUsers(q: string | undefined, page: PageQuery): Promise<ListResult<UserRecord>> {
-    let all = [...this.users.values()];
+    let all = [...this.users.values()].filter((u): u is UserRecord => Boolean(u && typeof u.uid === "string"));
     if (q) all = all.filter((u) => matchQ([u.uid, u.email, u.displayName], q));
-    all.sort((a, b) => b.createdAt - a.createdAt);
+    all.sort((a, b) => (typeof b.createdAt === "number" ? b.createdAt : 0) - (typeof a.createdAt === "number" ? a.createdAt : 0));
     return { items: all.slice(page.offset, page.offset + page.pageSize).map((u) => ({ ...u })), total: all.length };
   }
 
@@ -442,21 +442,25 @@ export class MemoryStore implements Store {
   }
 
   async listFiles(filters: FileFilters, page: PageQuery): Promise<ListResult<FileRecord>> {
-    let all = [...this.files.values()];
+    let all = [...this.files.values()].filter((f): f is FileRecord => Boolean(f && typeof f.id === "string"));
     if (filters.uid) all = all.filter((f) => f.uid === filters.uid);
     if (filters.category) all = all.filter((f) => f.category === filters.category);
     if (filters.status) all = all.filter((f) => f.status === filters.status);
-    if (filters.createdAfter !== undefined) all = all.filter((f) => f.createdAt >= filters.createdAfter!);
-    if (filters.createdBefore !== undefined) all = all.filter((f) => f.createdAt <= filters.createdBefore!);
+    if (filters.createdAfter !== undefined) all = all.filter((f) => typeof f.createdAt === "number" && f.createdAt >= filters.createdAfter!);
+    if (filters.createdBefore !== undefined) all = all.filter((f) => typeof f.createdAt === "number" && f.createdAt <= filters.createdBefore!);
     if (filters.expiringInDays !== undefined) {
       const until = nowFn() + filters.expiringInDays * 86_400_000;
-      all = all.filter((f) => f.expiresAt <= until && f.status !== "deleted");
+      all = all.filter((f) => typeof f.expiresAt === "number" && f.expiresAt <= until && f.status !== "deleted");
     }
     const q = filters.q;
     if (q) all = all.filter((f) => matchQ([f.id, f.name, f.providerFileId], q));
     const sortKey = filters.sort ?? "createdAt";
     const dir = filters.order === "asc" ? 1 : -1;
-    all.sort((a, b) => (a[sortKey] - b[sortKey]) * dir);
+    all.sort((a, b) => {
+      const av = typeof a[sortKey] === "number" ? (a[sortKey] as number) : 0;
+      const bv = typeof b[sortKey] === "number" ? (b[sortKey] as number) : 0;
+      return (av - bv) * dir;
+    });
     return {
       items: all.slice(page.offset, page.offset + page.pageSize).map((f) => ({ ...f })),
       total: all.length,
@@ -518,7 +522,7 @@ export class MemoryStore implements Store {
 
   // ---- drive -------------------------------------------------------------
   async listDriveAccounts() {
-    return [...this.driveAccounts.values()].map((a) => ({ ...a }));
+    return [...this.driveAccounts.values()].filter((a): a is DriveAccountRecord => Boolean(a && typeof a.id === "string")).map((a) => ({ ...a }));
   }
 
   async getDriveAccount(id: string) {
@@ -658,8 +662,8 @@ export class MemoryStore implements Store {
   }
 
   async listAuditLogs(filter: { action?: string; actorUid?: string }, page: PageQuery) {
-    let all = [...this.auditLogs];
-    if (filter.action) all = all.filter((l) => l.action.includes(filter.action!));
+    let all = [...this.auditLogs].filter((l): l is AuditLogRecord => Boolean(l && typeof l.id === "string"));
+    if (filter.action) all = all.filter((l) => typeof l.action === "string" && l.action.includes(filter.action!));
     if (filter.actorUid) all = all.filter((l) => l.actorUid === filter.actorUid);
     return { items: all.slice(page.offset, page.offset + page.pageSize).map((l) => ({ ...l })), total: all.length };
   }
@@ -680,7 +684,8 @@ export class MemoryStore implements Store {
 
   async listCleanupRuns(limit: number) {
     return [...this.cleanupRuns.values()]
-      .sort((a, b) => b.startedAt - a.startedAt)
+      .filter((r): r is CleanupRunRecord => Boolean(r && typeof r.id === "string"))
+      .sort((a, b) => (typeof b.startedAt === "number" ? b.startedAt : 0) - (typeof a.startedAt === "number" ? a.startedAt : 0))
       .slice(0, limit)
       .map((r) => ({ ...r }));
   }
