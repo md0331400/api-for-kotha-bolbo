@@ -51,6 +51,7 @@ export const POST = apiRoute(async (ctx) => {
     status: "enabled",
     createdAt: now,
     clientApiKey: generated.rawKey,
+    clientApiKeyId: generated.keyId,
   };
   const keyRecord: ApiKeyRecord = {
     id: generated.keyId,
