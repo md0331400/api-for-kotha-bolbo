@@ -52,7 +52,7 @@ export default function AppsPage() {
     setBusy(true);
     try {
       if (editApp) {
-        await api.patch(user!, `/api/v1/admin/apps/\${editApp.id}`, form);
+        await api.patch(user!, `/api/v1/admin/apps/${editApp.id}`, form);
         setToast({ message: "Application updated.", tone: "success" });
       } else {
         await api.post(user!, "/api/v1/admin/apps", form);
@@ -72,7 +72,7 @@ export default function AppsPage() {
     if (!confirmDelete) return;
     setBusy(true);
     try {
-      await api.del(user!, `/api/v1/admin/apps/\${confirmDelete.id}`);
+      await api.del(user!, `/api/v1/admin/apps/${confirmDelete.id}`);
       setToast({ message: "Application deleted.", tone: "success" });
       setConfirmDelete(null);
       await load();
@@ -119,7 +119,7 @@ export default function AppsPage() {
   const toggle = async (app: AppRecord) => {
     setBusy(true);
     try {
-      await api.patch(user!, `/api/v1/admin/apps/\${app.id}`, { status: app.status === "enabled" ? "disabled" : "enabled" });
+      await api.patch(user!, `/api/v1/admin/apps/${app.id}`, { status: app.status === "enabled" ? "disabled" : "enabled" });
       setToast({ message: "Status updated.", tone: "success" });
       await load();
     } catch (err) {
