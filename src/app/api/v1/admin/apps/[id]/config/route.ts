@@ -23,7 +23,7 @@ export const GET = apiRoute(async (ctx) => {
     storageAppId: app.id,
     packageName: app.packageName,
     domain: new URL(config.appBaseUrl).host,
-    storageApiUrl: config.appBaseUrl.replace(/\\/$/, ""),
+    storageApiUrl: config.appBaseUrl.replace(/\/$/, ""),
     storageApiKey: app.clientApiKey,
     apiKey: firebase.apiKey,
     authDomain: firebase.authDomain,
