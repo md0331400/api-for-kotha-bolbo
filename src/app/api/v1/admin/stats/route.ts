@@ -1,4 +1,5 @@
 import { apiRoute, dataResponse } from "@/lib/api/handler";
+import { safeISOString, safeISOStringNullable } from "@/lib/safe-date";
 
 /**
  * GET /api/v1/admin/stats
@@ -47,23 +48,26 @@ export const GET = apiRoute(
       },
       expiringWithin7Days: expiringSoon.total,
       failedUploads: failedUploads.length,
-      recentFailedUploads: failedUploads.slice(0, 5).map((u) => ({
-        uploadId: u.id,
-        category: u.category,
-        name: u.name,
-        error: u.error ?? null,
-        updatedAt: new Date(u.updatedAt).toISOString(),
-      })),
+      recentFailedUploads: failedUploads
+        .filter((u) => u && typeof u.id === "string")
+        .slice(0, 5)
+        .map((u) => ({
+          uploadId: u.id,
+          category: u.category,
+          name: u.name,
+          error: u.error ?? null,
+          updatedAt: safeISOString((u as unknown as Record<string, unknown>).updatedAt),
+        })),
       cleanup: {
         lastRun: runs[0]
           ? {
               id: runs[0].id,
               status: runs[0].status,
-              startedAt: new Date(runs[0].startedAt).toISOString(),
-              finishedAt: runs[0].finishedAt ? new Date(runs[0].finishedAt).toISOString() : null,
-              deleted: runs[0].deleted,
-              failed: runs[0].failed,
-              errors: runs[0].errors.slice(0, 5),
+              startedAt: safeISOString((runs[0] as unknown as Record<string, unknown>).startedAt),
+              finishedAt: safeISOStringNullable((runs[0] as unknown as Record<string, unknown>).finishedAt),
+              deleted: typeof runs[0].deleted === "number" ? runs[0].deleted : 0,
+              failed: typeof runs[0].failed === "number" ? runs[0].failed : 0,
+              errors: Array.isArray(runs[0].errors) ? runs[0].errors.slice(0, 5) : [],
             }
           : null,
         pendingRetries,

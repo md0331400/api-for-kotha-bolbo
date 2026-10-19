@@ -245,22 +245,53 @@ export type PublicFile = {
   name: string;
   mimeType: string;
   sizeBytes: number;
-  createdAt: string;
-  expiresAt: string;
+  createdAt: string | null;
+  expiresAt: string | null;
   status: FileStatus;
-  daysUntilExpiry: number;
+  daysUntilExpiry: number | null;
 };
 
+// Safe helper to avoid throwing on invalid dates (copied here to avoid circular import)
+function _safeISOString(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+    return null;
+  }
+  if (typeof value === "string" && value) {
+    const t = Date.parse(value);
+    if (Number.isFinite(t)) return new Date(t).toISOString();
+    return null;
+  }
+  return null;
+}
+
 export function toPublicFile(f: FileRecord, now = Date.now()): PublicFile {
+  if (!f || typeof f.id !== "string") {
+    const rawCreated = (f as unknown as Record<string, unknown>)?.createdAt;
+    const rawExpires = (f as unknown as Record<string, unknown>)?.expiresAt;
+    return {
+      id: String((f as unknown as Record<string, unknown>)?.id ?? "unknown"),
+      category: (typeof (f as unknown as Record<string, unknown>)?.category === "string" ? (f as unknown as Record<string, unknown>).category : "other") as FileCategory,
+      name: String((f as unknown as Record<string, unknown>)?.name ?? "unknown"),
+      mimeType: String((f as unknown as Record<string, unknown>)?.mimeType ?? "application/octet-stream"),
+      sizeBytes: typeof (f as unknown as Record<string, unknown>)?.sizeBytes === "number" ? ((f as unknown as Record<string, unknown>).sizeBytes as number) : 0,
+      createdAt: _safeISOString(rawCreated),
+      expiresAt: _safeISOString(rawExpires),
+      status: (typeof (f as unknown as Record<string, unknown>)?.status === "string" ? (f as unknown as Record<string, unknown>).status : "confirmed") as FileStatus,
+      daysUntilExpiry: typeof rawExpires === "number" ? Math.ceil((rawExpires - now) / 86_400_000) : null,
+    };
+  }
   return {
     id: f.id,
     category: f.category,
     name: f.name,
     mimeType: f.mimeType,
-    sizeBytes: f.sizeBytes,
-    createdAt: new Date(f.createdAt || Date.now()).toISOString(),
-    expiresAt: new Date(f.expiresAt || Date.now()).toISOString(),
+    sizeBytes: typeof f.sizeBytes === "number" ? f.sizeBytes : 0,
+    createdAt: _safeISOString(f.createdAt),
+    expiresAt: _safeISOString(f.expiresAt),
     status: f.status,
-    daysUntilExpiry: Math.ceil((f.expiresAt - now) / 86_400_000),
+    daysUntilExpiry: typeof f.expiresAt === "number" ? Math.ceil((f.expiresAt - now) / 86_400_000) : null,
   };
 }

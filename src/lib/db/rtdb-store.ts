@@ -177,9 +177,9 @@ export class RtdbStore implements Store {
 
   async listUsers(q: string | undefined, page: PageQuery): Promise<ListResult<UserRecord>> {
     const all = (await this.val<Record<string, UserRecord>>("users")) ?? {};
-    let items = Object.values(all);
+    let items = Object.values(all).filter((u): u is UserRecord => Boolean(u && typeof u.uid === "string"));
     if (q) items = items.filter((u) => matchQ([u.uid, u.email, u.displayName], q));
-    items.sort((a, b) => b.createdAt - a.createdAt);
+    items.sort((a, b) => (typeof b.createdAt === "number" ? b.createdAt : 0) - (typeof a.createdAt === "number" ? a.createdAt : 0));
     const total = items.length;
     return { items: items.slice(page.offset, page.offset + page.pageSize), total };
   }
@@ -541,22 +541,26 @@ export class RtdbStore implements Store {
   async listFiles(filters: FileFilters, page: PageQuery): Promise<ListResult<FileRecord>> {
     const sourcePath = filters.uid ? `filesByUid/${safeKey(filters.uid)}` : "files";
     const all = (await this.val<Record<string, FileRecord>>(sourcePath)) ?? {};
-    let items = Object.values(all);
+    let items = Object.values(all).filter((f): f is FileRecord => Boolean(f && typeof f.id === "string"));
     if (filters.uid) items = items.filter((f) => f.uid === filters.uid);
     if (filters.appId !== undefined) items = items.filter((f) => f.appId === filters.appId || (filters.appId === null && !f.appId));
     if (filters.category) items = items.filter((f) => f.category === filters.category);
     if (filters.status) items = items.filter((f) => f.status === filters.status);
-    if (filters.createdAfter !== undefined) items = items.filter((f) => f.createdAt >= filters.createdAfter!);
-    if (filters.createdBefore !== undefined) items = items.filter((f) => f.createdAt <= filters.createdBefore!);
+    if (filters.createdAfter !== undefined) items = items.filter((f) => typeof f.createdAt === "number" && f.createdAt >= filters.createdAfter!);
+    if (filters.createdBefore !== undefined) items = items.filter((f) => typeof f.createdAt === "number" && f.createdAt <= filters.createdBefore!);
     if (filters.expiringInDays !== undefined) {
       const until = Date.now() + filters.expiringInDays * 86_400_000;
-      items = items.filter((f) => f.expiresAt <= until && f.status !== "deleted");
+      items = items.filter((f) => typeof f.expiresAt === "number" && f.expiresAt <= until && f.status !== "deleted");
     }
     const q = filters.q;
     if (q) items = items.filter((f) => matchQ([f.id, f.name, f.providerFileId], q));
     const sortKey = filters.sort ?? "createdAt";
     const dir = filters.order === "asc" ? 1 : -1;
-    items.sort((a, b) => (a[sortKey] - b[sortKey]) * dir);
+    items.sort((a, b) => {
+      const av = typeof a[sortKey] === "number" ? (a[sortKey] as number) : 0;
+      const bv = typeof b[sortKey] === "number" ? (b[sortKey] as number) : 0;
+      return (av - bv) * dir;
+    });
     const total = items.length;
     return { items: items.slice(page.offset, page.offset + page.pageSize), total };
   }
@@ -634,7 +638,7 @@ export class RtdbStore implements Store {
   // ---- drive -------------------------------------------------------------
   async listDriveAccounts(): Promise<DriveAccountRecord[]> {
     const all = (await this.val<Record<string, DriveAccountRecord>>("driveAccounts")) ?? {};
-    return Object.values(all);
+    return Object.values(all).filter((a): a is DriveAccountRecord => Boolean(a && typeof a.id === "string"));
   }
 
   async getDriveAccount(id: string): Promise<DriveAccountRecord | null> {
@@ -763,10 +767,10 @@ export class RtdbStore implements Store {
     page: PageQuery
   ): Promise<ListResult<AuditLogRecord>> {
     const all = (await this.val<Record<string, AuditLogRecord>>("auditLogs")) ?? {};
-    let items = Object.values(all);
-    if (filter.action) items = items.filter((l) => l.action.includes(filter.action!));
+    let items = Object.values(all).filter((l): l is AuditLogRecord => Boolean(l && typeof l.id === "string"));
+    if (filter.action) items = items.filter((l) => typeof l.action === "string" && l.action.includes(filter.action!));
     if (filter.actorUid) items = items.filter((l) => l.actorUid === filter.actorUid);
-    items.sort((a, b) => b.at - a.at);
+    items.sort((a, b) => (typeof b.at === "number" ? b.at : 0) - (typeof a.at === "number" ? a.at : 0));
     const total = items.length;
     return { items: items.slice(page.offset, page.offset + page.pageSize), total };
   }
@@ -783,7 +787,8 @@ export class RtdbStore implements Store {
   async listCleanupRuns(limit: number): Promise<CleanupRunRecord[]> {
     const all = (await this.val<Record<string, CleanupRunRecord>>("cleanupRuns")) ?? {};
     return Object.values(all)
-      .sort((a, b) => b.startedAt - a.startedAt)
+      .filter((r): r is CleanupRunRecord => Boolean(r && typeof r.id === "string"))
+      .sort((a, b) => (typeof b.startedAt === "number" ? b.startedAt : 0) - (typeof a.startedAt === "number" ? a.startedAt : 0))
       .slice(0, limit);
   }
 

@@ -2,6 +2,7 @@ import { apiRoute, paginatedResponse } from "@/lib/api/handler";
 import { z } from "zod";
 import { parseOrThrow } from "@/lib/validation";
 import { pageMeta } from "@/lib/format";
+import { safeISOString } from "@/lib/safe-date";
 
 const querySchema = z.object({
   action: z.string().max(64).optional(),
@@ -22,17 +23,19 @@ export const GET = apiRoute(
       { page: q.page, pageSize: q.pageSize, offset: (q.page - 1) * q.pageSize }
     );
     return paginatedResponse(
-      result.items.map((l) => ({
-        id: l.id,
-        at: new Date(l.at || Date.now()).toISOString(),
-        actorUid: l.actorUid,
-        actorEmail: l.actorEmail,
-        action: l.action,
-        targetType: l.targetType,
-        targetId: l.targetId,
-        requestId: l.requestId,
-        details: l.details,
-      })),
+      result.items
+        .filter((l) => l && typeof l.id === "string")
+        .map((l) => ({
+          id: l.id,
+          at: safeISOString((l as unknown as Record<string, unknown>).at),
+          actorUid: l.actorUid ?? null,
+          actorEmail: l.actorEmail ?? null,
+          action: typeof l.action === "string" ? l.action : "unknown",
+          targetType: typeof l.targetType === "string" ? l.targetType : "unknown",
+          targetId: typeof l.targetId === "string" ? l.targetId : "",
+          requestId: l.requestId ?? null,
+          details: (l.details && typeof l.details === "object" ? l.details : {}) as Record<string, unknown>,
+        })),
       pageMeta(q.page, q.pageSize, result.total)
     );
   },

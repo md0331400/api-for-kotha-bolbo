@@ -1,6 +1,7 @@
 import { apiRoute, paginatedResponse } from "@/lib/api/handler";
 import { parseOrThrow, adminUserListQuerySchema } from "@/lib/validation";
 import { pageMeta } from "@/lib/format";
+import { safeISOString } from "@/lib/safe-date";
 
 function publicUser(u: {
   uid: string;
@@ -13,19 +14,20 @@ function publicUser(u: {
   restricted: boolean;
   createdAt: number;
   lastLoginAt: number;
-}) {
+}): Record<string, unknown> | null {
+  if (!u || typeof u.uid !== "string") return null;
   return {
     uid: u.uid,
-    email: u.email,
-    displayName: u.displayName,
-    quotaBytes: u.quotaBytes,
-    usedBytes: u.usedBytes,
-    reservedBytes: u.reservedBytes,
-    remainingBytes: Math.max(0, u.quotaBytes - u.usedBytes - u.reservedBytes),
-    fileCount: u.fileCount,
-    restricted: u.restricted,
-    createdAt: new Date(u.createdAt || Date.now()).toISOString(),
-    lastLoginAt: new Date(u.lastLoginAt || Date.now()).toISOString(),
+    email: u.email ?? null,
+    displayName: u.displayName ?? null,
+    quotaBytes: typeof u.quotaBytes === "number" ? u.quotaBytes : 0,
+    usedBytes: typeof u.usedBytes === "number" ? u.usedBytes : 0,
+    reservedBytes: typeof u.reservedBytes === "number" ? u.reservedBytes : 0,
+    remainingBytes: Math.max(0, (typeof u.quotaBytes === "number" ? u.quotaBytes : 0) - (typeof u.usedBytes === "number" ? u.usedBytes : 0) - (typeof u.reservedBytes === "number" ? u.reservedBytes : 0)),
+    fileCount: typeof u.fileCount === "number" ? u.fileCount : 0,
+    restricted: Boolean(u.restricted),
+    createdAt: safeISOString((u as unknown as Record<string, unknown>).createdAt),
+    lastLoginAt: safeISOString((u as unknown as Record<string, unknown>).lastLoginAt),
   };
 }
 
@@ -42,7 +44,7 @@ export const GET = apiRoute(
       pageSize: q.pageSize,
       offset: (q.page - 1) * q.pageSize,
     });
-    return paginatedResponse(result.items.map(publicUser), pageMeta(q.page, q.pageSize, result.total));
+    return paginatedResponse(result.items.map(publicUser).filter(Boolean), pageMeta(q.page, q.pageSize, result.total));
   },
   { auth: "admin", rateLimit: { limit: 240, windowSec: 60, bucket: "admin" } }
 );

@@ -95,22 +95,59 @@ export function hasScope(scopes: readonly ApiKeyScope[] | undefined, required: A
   return Boolean(scopes && scopes.includes(required));
 }
 
+function _safeISOString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+    return null;
+  }
+  if (typeof value === "string") {
+    const t = Date.parse(value);
+    if (Number.isFinite(t)) return new Date(t).toISOString();
+    return null;
+  }
+  return null;
+}
+function _safeISOStringRequired(value: unknown): string {
+  const s = _safeISOString(value);
+  return s ?? new Date().toISOString();
+}
+
 /** Public, non-secret projection for the admin dashboard. */
 export function publicApiKey(rec: ApiKeyRecord) {
+  if (!rec || typeof rec.id !== "string") {
+    return {
+      id: String((rec as unknown as Record<string, unknown>)?.id ?? "unknown"),
+      name: String((rec as unknown as Record<string, unknown>)?.name ?? ""),
+      maskedKey: "",
+      subjectUid: String((rec as unknown as Record<string, unknown>)?.subjectUid ?? ""),
+      appId: null,
+      scopes: [],
+      status: "active" as const,
+      createdAt: new Date().toISOString(),
+      createdBy: "",
+      createdByEmail: null,
+      lastUsedAt: null,
+      revokedAt: null,
+      revokedBy: null,
+      expiresAt: null,
+    };
+  }
   return {
     id: rec.id,
-    name: rec.name,
-    maskedKey: maskApiKey(rec),
-    subjectUid: rec.subjectUid,
+    name: typeof rec.name === "string" ? rec.name : "",
+    maskedKey: rec.prefix ? maskApiKey(rec as Pick<ApiKeyRecord, "prefix">) : "",
+    subjectUid: typeof rec.subjectUid === "string" ? rec.subjectUid : "",
     appId: rec.appId || null,
-    scopes: rec.scopes,
+    scopes: Array.isArray(rec.scopes) ? rec.scopes : [],
     status: rec.status,
-    createdAt: new Date(rec.createdAt).toISOString(),
-    createdBy: rec.createdBy,
-    createdByEmail: rec.createdByEmail,
-    lastUsedAt: rec.lastUsedAt ? new Date(rec.lastUsedAt).toISOString() : null,
-    revokedAt: rec.revokedAt ? new Date(rec.revokedAt).toISOString() : null,
-    revokedBy: rec.revokedBy,
-    expiresAt: rec.expiresAt ? new Date(rec.expiresAt).toISOString() : null,
+    createdAt: _safeISOStringRequired((rec as unknown as Record<string, unknown>).createdAt),
+    createdBy: typeof rec.createdBy === "string" ? rec.createdBy : "",
+    createdByEmail: typeof rec.createdByEmail === "string" ? rec.createdByEmail : null,
+    lastUsedAt: _safeISOString((rec as unknown as Record<string, unknown>).lastUsedAt),
+    revokedAt: _safeISOString((rec as unknown as Record<string, unknown>).revokedAt),
+    revokedBy: typeof rec.revokedBy === "string" ? rec.revokedBy : null,
+    expiresAt: _safeISOString((rec as unknown as Record<string, unknown>).expiresAt),
   };
 }
