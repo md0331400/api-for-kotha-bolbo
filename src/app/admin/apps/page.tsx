@@ -6,7 +6,7 @@ import { api, ApiClientError, describeError, type UiError } from "@/lib/admin/ap
 import { formatDate } from "@/lib/format";
 import { Badge, Button, Card, ConfirmDialog, ErrorBanner, Field, Input, PageLoading, Toast } from "@/components/admin/ui";
 import { PageHeader } from "@/components/admin/shell";
-import { Copy, Plus, Smartphone, Trash2 } from "lucide-react";
+import { Download, Plus, Smartphone, Trash2 } from "lucide-react";
 
 type AppRecord = {
   id: string;
@@ -83,6 +83,39 @@ export default function AppsPage() {
     }
   };
 
+  const downloadConfig = async (app: AppRecord) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/v1/admin/apps/${app.id}/config`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        let message = `Config download failed (HTTP ${res.status}).`;
+        try {
+          const payload = await res.json();
+          message = payload?.error?.message || message;
+        } catch {}
+        throw new Error(message);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = "kotha-bolbo-storage-server.json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      setToast({ message: "SDK config downloaded.", tone: "success" });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Config download failed.", tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggle = async (app: AppRecord) => {
     setBusy(true);
     try {
@@ -130,7 +163,10 @@ export default function AppsPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end flex-wrap">
+                <Button variant="secondary" size="sm" onClick={() => downloadConfig(app)} disabled={busy}>
+                  <Download className="mr-1 h-3.5 w-3.5" /> Download JSON
+                </Button>
                 <Button variant="secondary" size="sm" onClick={() => { setForm({ name: app.name, packageName: app.packageName }); setEditApp(app); setCreateOpen(true); }}>
                   Edit
                 </Button>
