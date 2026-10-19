@@ -10,7 +10,7 @@ const createSchema = z.object({
   packageName: z
     .string()
     .trim()
-    .regex(/^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$/, "Invalid Android package name"),
+    .regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/, "Invalid Android package name"),
 });
 
 function publicApp<T extends { clientApiKey?: string }>(app: T) {
