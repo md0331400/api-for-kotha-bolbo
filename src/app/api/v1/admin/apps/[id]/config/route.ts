@@ -19,7 +19,8 @@ export const GET = apiRoute(async (ctx) => {
   const payload = {
     configVersion: 1,
     appName: app.name,
-    appId: app.id,
+    appId: firebase.appId,
+    storageAppId: app.id,
     packageName: app.packageName,
     domain: new URL(config.appBaseUrl).host,
     storageApiUrl: config.appBaseUrl.replace(/\\/$/, ""),
@@ -30,7 +31,6 @@ export const GET = apiRoute(async (ctx) => {
     projectId: firebase.projectId,
     storageBucket: firebase.storageBucket,
     messagingSenderId: firebase.messagingSenderId,
-    firebaseAppId: firebase.appId,
   };
 
   return new Response(JSON.stringify(payload, null, 2) + "\n", {
