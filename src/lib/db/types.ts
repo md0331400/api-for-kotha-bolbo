@@ -129,6 +129,7 @@ export interface AppRecord {
   createdAt: number;
   /** Public-client app key needed to regenerate the downloadable SDK config. */
   clientApiKey?: string;
+  clientApiKeyId?: string;
 }
 
 export interface DriveTokenRecord {
